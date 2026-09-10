@@ -1,0 +1,36 @@
+# ── PRE-COMMIT ────────────────────────────────────────────────────────
+# Staged files only. Formatters rewrite and re-stage; nothing blocks on style.
+
+pre-commit:
+  parallel: true
+  commands:
+    prettier:
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css,md,yml,yaml}"
+      run: pnpm exec prettier --write {staged_files}
+      stage_fixed: true
+
+    ruff-format:
+      root: "apps/api/"
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    ruff-check:
+      root: "apps/api/"
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+
+# ── PRE-PUSH ──────────────────────────────────────────────────────────
+# Whole repo, mirrors CI. Slow — bypass with `git push --no-verify`.
+
+pre-push:
+  parallel: true
+  commands:
+    lint:
+      run: pnpm lint
+    typecheck:
+      run: pnpm typecheck
+    test:
+      root: "apps/api/"
+      run: uv run pytest -q

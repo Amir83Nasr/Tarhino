@@ -1,5 +1,11 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Tarhino | طرحینو
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
+
+use Pnpm for Frontend Next js and use UV for Backend Fast Api and I use Postgres Neon for Database.
+
+use Prettier and Ruff for formatting.
+
+using Python 3.14 and Node 24 version.
+
+use RTL and IranYekanX font.
