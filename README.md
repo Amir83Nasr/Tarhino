@@ -1,4 +1,4 @@
-<img src="apps/web/public/app-icon.svg" alt="Tarhino" width="96" />
+<img alt="Tarhino" src="apps/web/public/square.svg" width="96">
 
 # Tarhino
 
