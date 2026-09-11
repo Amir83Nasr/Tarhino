@@ -2,6 +2,7 @@
 
 import { apiFetch } from "@/lib/api/client"
 
+import type { User } from "@/lib/api/types"
 import type { AiSettings, ChatMessage } from "@/features/assistant/ai"
 
 // Server-held AI settings. The key is write-only: the server answers has_key
@@ -15,12 +16,21 @@ export type AiSettingsInput = {
   api_key?: string
 }
 
+export type AiSettingsAndUser = {
+  settings: AiSettings
+  user: User
+}
+
 export function saveAiSettings(input: AiSettingsInput) {
-  return apiFetch<AiSettings>("/ai/settings", { method: "PUT", body: input })
+  return apiFetch<AiSettingsAndUser>("/ai/settings", {
+    method: "PUT",
+    body: input,
+  })
 }
 
 export function deleteAiKey() {
-  return apiFetch<void>("/ai/settings/key", { method: "DELETE" })
+  // Server falls back to the shared default: it returns the effective row.
+  return apiFetch<AiSettings>("/ai/settings/key", { method: "DELETE" })
 }
 
 export function chat(messages: ChatMessage[]) {

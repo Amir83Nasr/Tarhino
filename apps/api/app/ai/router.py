@@ -1,10 +1,11 @@
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
+from app.core.config import get_settings
 from app.core.vault import decrypt_secret, encrypt_secret
 from app.db.session import get_session
 from app.schemas.ai import (
@@ -20,8 +21,6 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
-DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "liquid/lfm-2.5-2.6b:free"
 _TIMEOUT = httpx.Timeout(60.0)
 
 _UPSTREAM_ERRORS: dict[int, str] = {
@@ -31,19 +30,37 @@ _UPSTREAM_ERRORS: dict[int, str] = {
 }
 
 
+def _defaults() -> tuple[str, str, str]:
+    settings = get_settings()
+    return (
+        settings.ai_default_base_url.rstrip("/"),
+        settings.ai_default_model.strip() or "liquid/lfm-2.5-2.6b:free",
+        settings.ai_default_api_key.strip(),
+    )
+
+
 def _view(user: CurrentUser) -> AiSettingsOut:
+    default_base_url, default_model, default_key = _defaults()
+    has_own_key = user.ai_api_key_enc is not None
     return AiSettingsOut(
-        base_url=user.ai_base_url,
-        model=user.ai_model,
-        has_key=user.ai_api_key_enc is not None,
+        base_url=user.ai_base_url or default_base_url,
+        model=user.ai_model or default_model,
+        has_key=has_own_key or bool(default_key),
+        is_default=not has_own_key and bool(default_key),
     )
 
 
 def _credentials(user: CurrentUser) -> tuple[str, str, str]:
-    """Return (api_key, base_url, model); 409 when no key is stored."""
-    base_url = (user.ai_base_url or DEFAULT_BASE_URL).rstrip("/")
-    model = (user.ai_model or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    """Return (api_key, base_url, model); 409 when no key is stored.
+
+    Per-user values win; the shared server default fills whatever the user
+    left empty.
+    """
+    default_base_url, default_model, default_key = _defaults()
+    base_url = (user.ai_base_url or default_base_url).rstrip("/")
+    model = (user.ai_model or default_model).strip() or default_model
     key = decrypt_secret(user.ai_api_key_enc) if user.ai_api_key_enc else None
+    key = key or default_key or None
     if not key:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -74,11 +91,12 @@ async def update_settings(
     return AiSettingsAndUser(settings=_view(user), user=UserOut.model_validate(user))
 
 
-@router.delete("/settings/key", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_key(user: CurrentUser, session: Session) -> Response:
+@router.delete("/settings/key", response_model=AiSettingsOut)
+async def delete_key(user: CurrentUser, session: Session) -> AiSettingsOut:
     user.ai_api_key_enc = None
     await session.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    await session.refresh(user)
+    return _view(user)
 
 
 @router.post("/chat", response_model=ChatResponse)

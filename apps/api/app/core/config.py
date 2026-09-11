@@ -32,6 +32,13 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:3000"
 
+    # ── AI DEFAULTS ──────────────────────────────────────────
+    # Shared fallback for every user: chat uses the per-user key first and
+    # the global default when the user stored nothing of their own.
+    ai_default_base_url: str = "https://openrouter.ai/api/v1"
+    ai_default_model: str = "liquid/lfm-2.5-2.6b:free"
+    ai_default_api_key: str = ""
+
     @field_validator("database_url")
     @classmethod
     def use_async_driver(cls, url: str) -> str:

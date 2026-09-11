@@ -7,6 +7,9 @@ class AiSettingsOut(BaseModel):
     base_url: str | None = None
     model: str | None = None
     has_key: bool = False
+    # True when the effective key comes from the shared server default,
+    # not from the user's own stored key.
+    is_default: bool = False
 
 
 class AiSettingsUpdate(BaseModel):

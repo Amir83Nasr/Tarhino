@@ -11,6 +11,9 @@ export type AiSettings = {
   base_url: string | null
   model: string | null
   has_key: boolean
+  // True when the effective config comes from the shared server default
+  // rather than the user's own stored key.
+  is_default?: boolean
 }
 
 export const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"

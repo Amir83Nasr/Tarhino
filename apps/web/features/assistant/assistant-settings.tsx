@@ -14,19 +14,33 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { toast } from "@workspace/ui/components/sonner"
 
-import { DEFAULT_BASE_URL, DEFAULT_MODEL } from "@/features/assistant/ai"
+import {
+  DEFAULT_BASE_URL,
+  DEFAULT_MODEL,
+  type AiSettings,
+} from "@/features/assistant/ai"
 import {
   deleteAiKey,
   getAiSettings,
   saveAiSettings,
 } from "@/features/assistant/api"
 
-export function AiSettingsSection() {
-  const client = useQueryClient()
-  const { data: settings } = useQuery({
+// Same "ai-settings" key as the assistant page: one fetch serves both,
+// and tab-hopping renders from cache. Save/delete set the row directly,
+// so no refetch on either path.
+export function useAiSettings() {
+  return useQuery({
     queryKey: ["ai-settings"],
     queryFn: getAiSettings,
-  })
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+  }).data
+}
+
+export function AiSettingsSection() {
+  const client = useQueryClient()
+  const settings = useAiSettings()
 
   // null = untouched, fall back to the server value; no sync effect needed.
   const [url, setUrl] = useState<string | null>(null)
@@ -40,13 +54,18 @@ export function AiSettingsSection() {
   async function save() {
     setSaving(true)
     try {
-      await saveAiSettings({
-        base_url: urlValue.trim(),
-        model: modelValue.trim(),
-        api_key: key.trim() || undefined,
+      // Only touched fields go out: untouched URL/model keep following the
+      // server default, and an emptied field clears the personal override.
+      const result = await saveAiSettings({
+        ...(url !== null ? { base_url: url.trim() } : {}),
+        ...(model !== null ? { model: model.trim() } : {}),
+        ...(key.trim() ? { api_key: key.trim() } : {}),
       })
       setKey("")
-      await client.invalidateQueries({ queryKey: ["ai-settings"] })
+      setUrl(null)
+      setModel(null)
+      // Server returns the saved row: swap it in, no GET after write.
+      client.setQueryData(["ai-settings"], result.settings)
       toast.success("تنظیمات ذخیره شد")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "انجام نشد")
@@ -58,9 +77,11 @@ export function AiSettingsSection() {
   async function removeKey() {
     setSaving(true)
     try {
-      await deleteAiKey()
-      await client.invalidateQueries({ queryKey: ["ai-settings"] })
-      toast.success("کلید حذف شد")
+      // Server drops the personal key and returns the effective row:
+      // shared default when one is configured, otherwise unconfigured.
+      const next = await deleteAiKey()
+      client.setQueryData<AiSettings>(["ai-settings"], next)
+      toast.success(next.has_key ? "به تنظیم پیش‌فرض برگشت" : "کلید حذف شد")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "انجام نشد")
     } finally {
@@ -76,11 +97,18 @@ export function AiSettingsSection() {
       <CardContent className="flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">
           {settings?.has_key
-            ? "کلید ذخیره شده و در همه دستگاه‌های شما فعال است."
+            ? settings?.is_default
+              ? "با تنظیم پیش‌فرض سرور فعال است؛ برای حساب خودتان کلید جدا وارد کنید."
+              : "کلید شخصی شما ذخیره شده و در همه دستگاه‌ها فعال است."
             : "کلید API را وارد کنید تا چت و ساخت طرح درس فعال شود."}
         </p>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="ai-key">کلید API</Label>
+          <Label htmlFor="ai-key">
+            کلید API شخصی
+            {settings?.is_default && (
+              <span className="text-muted-foreground"> (اختیاری)</span>
+            )}
+          </Label>
           <Input
             id="ai-key"
             type="password"
@@ -88,12 +116,21 @@ export function AiSettingsSection() {
             autoComplete="off"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder={settings?.has_key ? "•••• ذخیره شده" : "sk-or-v1-…"}
+            placeholder={
+              settings?.has_key && !settings?.is_default
+                ? "•••• ذخیره شده"
+                : "خالی = استفاده از پیش‌فرض سرور"
+            }
           />
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ai-url">آدرس سرویس</Label>
+            <Label htmlFor="ai-url">
+              آدرس سرویس
+              {url === null && (
+                <span className="text-muted-foreground"> (پیش‌فرض سرور)</span>
+              )}
+            </Label>
             <Input
               id="ai-url"
               dir="ltr"
@@ -103,7 +140,12 @@ export function AiSettingsSection() {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ai-model">مدل</Label>
+            <Label htmlFor="ai-model">
+              مدل
+              {model === null && (
+                <span className="text-muted-foreground"> (پیش‌فرض سرور)</span>
+              )}
+            </Label>
             <Input
               id="ai-model"
               dir="ltr"
@@ -113,10 +155,17 @@ export function AiSettingsSection() {
             />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">
-          کلید روی حساب شما رمزنگاری‌شده ذخیره می‌شود و در هر دستگاهی با همان
-          حساب در دسترس است.
-        </p>
+        {settings?.is_default ? (
+          <p className="text-xs text-muted-foreground">
+            با پیش‌فرض سرور کار می‌کند. آدرس یا مدل را خالی ذخیره کنید تا به
+            پیش‌فرض برگردد.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            کلید روی حساب شما رمزنگاری‌شده ذخیره می‌شود و در هر دستگاهی با همان
+            حساب در دسترس است.
+          </p>
+        )}
         <div className="flex gap-2">
           <Button
             type="button"
@@ -126,14 +175,14 @@ export function AiSettingsSection() {
           >
             ذخیره
           </Button>
-          {settings?.has_key && (
+          {settings?.has_key && !settings?.is_default && (
             <Button
               type="button"
               variant="ghost"
               onClick={removeKey}
               disabled={saving}
             >
-              حذف کلید
+              حذف کلید شخصی
             </Button>
           )}
         </div>
