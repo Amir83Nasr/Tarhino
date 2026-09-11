@@ -6,15 +6,21 @@ import { useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { LessonCard } from "@/features/teaching/lesson-card"
 import { LessonDialog } from "@/features/teaching/lesson-dialog"
-import { useLessonPlans } from "@/features/teaching/hooks"
+import { useHolidays, useLessonPlans } from "@/features/teaching/hooks"
 import {
   addDays,
   formatShortDate,
   isSameDay,
+  isSchoolWeekend,
   monthName,
   startOfWeek,
   toISODate,
@@ -37,7 +43,9 @@ export default function WeekPage() {
   const selectedIso = toISODate(selected)
 
   const plans = useLessonPlans(from, to)
+  const holidays = useHolidays(from, to)
   const selectedPlans = plans?.filter((p) => p.date === selectedIso) ?? []
+  const selectedHoliday = holidays?.find((h) => h.date === selectedIso)
 
   const weekStart = toJalali(startOfWeek(anchor))
 
@@ -48,32 +56,47 @@ export default function WeekPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4">
-      <header className="flex items-center justify-between">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => shiftWeek(-1)}
-          aria-label="هفته قبل"
-        >
-          <ChevronRight />
-        </Button>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
+      <header className="mx-auto flex w-full max-w-md items-center justify-between">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => shiftWeek(-1)}
+                aria-label="هفته قبل"
+              />
+            }
+          >
+            <ChevronRight />
+          </TooltipTrigger>
+          <TooltipContent>هفته قبل</TooltipContent>
+        </Tooltip>
         <span className="text-sm font-medium">
           {monthName(weekStart.month)} {toPersianDigits(weekStart.year)}
         </span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => shiftWeek(1)}
-          aria-label="هفته بعد"
-        >
-          <ChevronLeft />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => shiftWeek(1)}
+                aria-label="هفته بعد"
+              />
+            }
+          >
+            <ChevronLeft />
+          </TooltipTrigger>
+          <TooltipContent>هفته بعد</TooltipContent>
+        </Tooltip>
       </header>
 
-      <ul className="grid grid-cols-7 gap-1">
+      <ul className="mx-auto grid w-full max-w-md grid-cols-7 gap-1">
         {days.map((day) => {
           const active = isSameDay(day, selected)
+          const off = isSchoolWeekend(day)
           return (
             <li key={day.toISOString()}>
               <button
@@ -87,7 +110,12 @@ export default function WeekPage() {
                 )}
               >
                 <span>{weekdayName(day).slice(0, 1)}</span>
-                <span className="tabular-nums">
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    !active && off && "text-destructive"
+                  )}
+                >
                   {toPersianDigits(toJalali(day).day)}
                 </span>
               </button>
@@ -98,23 +126,38 @@ export default function WeekPage() {
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">{formatShortDate(selected)}</h2>
-        <Button
-          size="icon-sm"
-          variant="outline"
-          onClick={() => {
-            setEditing(null)
-            setOpen(true)
-          }}
-          aria-label="افزودن درس"
-        >
-          <Plus />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="outline"
+                onClick={() => {
+                  setEditing(null)
+                  setOpen(true)
+                }}
+                aria-label="افزودن درس"
+              />
+            }
+          >
+            <Plus />
+          </TooltipTrigger>
+          <TooltipContent>افزودن درس</TooltipContent>
+        </Tooltip>
       </div>
 
+      {selectedHoliday && (
+        <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+          {selectedHoliday.title} — تعطیل
+        </div>
+      )}
+
       {plans === undefined ? (
-        <Skeleton className="h-20 w-full" />
+        <div className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
+          <Skeleton className="h-20 w-full" />
+        </div>
       ) : selectedPlans.length ? (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
           {selectedPlans.map((plan) => (
             <LessonCard
               key={plan.id}

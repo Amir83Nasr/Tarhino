@@ -30,6 +30,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "var(--radius)",
+          // Sonner injects its own system-ui font stack at runtime; inline style
+          // is the only way to win and keep toasts in the app font (IRANYekanX).
+          fontFamily: "var(--font-sans)",
         } as React.CSSProperties
       }
       toastOptions={{
@@ -43,4 +46,5 @@ const Toaster = ({ ...props }: ToasterProps) => {
 }
 
 // Re-exported so apps do not need their own `sonner` dependency just to fire a toast.
-export { Toaster, toast } from "sonner"
+export { toast } from "sonner"
+export { Toaster }

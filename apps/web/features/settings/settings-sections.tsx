@@ -12,6 +12,11 @@ import {
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { toast } from "@workspace/ui/components/sonner"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 
 import {
   addClass,
@@ -40,16 +45,23 @@ type NamedApi = {
 
 function DeleteButton({ onClick }: { onClick: () => void }) {
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className="text-muted-foreground hover:text-destructive"
-      onClick={onClick}
-      aria-label="حذف"
-    >
-      <Trash2 />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={onClick}
+            aria-label="حذف"
+          />
+        }
+      >
+        <Trash2 />
+      </TooltipTrigger>
+      <TooltipContent>حذف</TooltipContent>
+    </Tooltip>
   )
 }
 

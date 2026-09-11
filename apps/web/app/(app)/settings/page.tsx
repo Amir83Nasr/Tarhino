@@ -10,14 +10,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@workspace/ui/components/dialog"
+import { DialogFooter } from "@workspace/ui/components/dialog"
+import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 import { Separator } from "@workspace/ui/components/separator"
 
 import { logout } from "@/features/auth/api"
@@ -50,8 +44,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4">
-      <h1 className="font-heading text-lg">تنظیمات</h1>
+    <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-4 md:gap-6 lg:grid-cols-2">
+      <h1 className="font-heading text-lg lg:col-span-full">تنظیمات</h1>
 
       <ConflictsSection />
       <ClassesSection />
@@ -59,7 +53,7 @@ export default function SettingsPage() {
       <PeriodsSection />
       <ExcelSection />
 
-      <Separator />
+      <Separator className="lg:col-span-full" />
 
       <Card>
         <CardHeader>
@@ -80,28 +74,25 @@ export default function SettingsPage() {
         خروج از حساب
       </Button>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>خروج از حساب کاربری</DialogTitle>
-            <DialogDescription>
-              مطمئنید که می‌خواهید از حساب خود خارج شوید؟
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-              disabled={pending}
-            >
-              انصراف
-            </Button>
-            <Button variant="destructive" onClick={onLogout} disabled={pending}>
-              خروج
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="خروج از حساب کاربری"
+        description="مطمئنید که می‌خواهید از حساب خود خارج شوید؟"
+      >
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setConfirmOpen(false)}
+            disabled={pending}
+          >
+            انصراف
+          </Button>
+          <Button variant="destructive" onClick={onLogout} disabled={pending}>
+            خروج
+          </Button>
+        </DialogFooter>
+      </ResponsiveDialog>
     </div>
   )
 }

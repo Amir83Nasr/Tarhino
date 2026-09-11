@@ -3,14 +3,8 @@
 import { useState } from "react"
 
 import { Button } from "@workspace/ui/components/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@workspace/ui/components/dialog"
+import { DialogFooter } from "@workspace/ui/components/dialog"
+import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { toast } from "@workspace/ui/components/sonner"
@@ -29,7 +23,7 @@ const STATUS_LABELS: Record<LessonStatus, string> = {
 }
 
 const selectClass =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 type Props = {
   open: boolean
@@ -40,25 +34,22 @@ type Props = {
 
 export function LessonDialog({ open, onOpenChange, date, plan = null }: Props) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{plan ? "ویرایش درس" : "درس جدید"}</DialogTitle>
-          <DialogDescription>
-            برای این زنگ چه کاری انجام می‌دهید؟
-          </DialogDescription>
-        </DialogHeader>
-        {/* Mounted only while open: fields seed from `plan` without a sync effect. */}
-        {open && (
-          <LessonForm
-            key={plan?.id ?? "new"}
-            date={date}
-            plan={plan}
-            onDone={() => onOpenChange(false)}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={plan ? "ویرایش درس" : "درس جدید"}
+      description="برای این زنگ چه کاری انجام می‌دهید؟"
+    >
+      {/* Mounted only while open: fields seed from `plan` without a sync effect. */}
+      {open && (
+        <LessonForm
+          key={plan?.id ?? "new"}
+          date={date}
+          plan={plan}
+          onDone={() => onOpenChange(false)}
+        />
+      )}
+    </ResponsiveDialog>
   )
 }
 

@@ -1,14 +1,12 @@
 <img src="apps/web/public/app-icon.svg" alt="Tarhino" width="96" />
 
-# Tarhino | طرحینو
-
-برنامه‌ریزی ساده، تدریس بهتر
+# Tarhino
 
 Offline-first lesson planning and schedule management for teachers. Persian, RTL, mobile-first, installable as a PWA.
 
 ---
 
-## ── STACK ──────────────────────────────────────────────────
+## STACK
 
 | Layer   | Tech                                                                                                     |
 | ------- | -------------------------------------------------------------------------------------------------------- |
@@ -19,7 +17,7 @@ Offline-first lesson planning and schedule management for teachers. Persian, RTL
 
 ---
 
-## ── REQUIREMENTS ───────────────────────────────────────────
+## REQUIREMENTS
 
 - Node >= 20, `pnpm@10`
 - Python >= 3.12, `uv`
@@ -27,7 +25,7 @@ Offline-first lesson planning and schedule management for teachers. Persian, RTL
 
 ---
 
-## ── SETUP ──────────────────────────────────────────────────
+## SETUP
 
 ```bash
 pnpm install
@@ -51,7 +49,7 @@ pnpm --filter tarhino-frontend dev
 
 ---
 
-## ── COMMANDS ───────────────────────────────────────────────
+## COMMANDS
 
 ```bash
 pnpm dev          # all workspaces
@@ -63,7 +61,7 @@ pnpm format
 
 ---
 
-## ── DOCS ───────────────────────────────────────────────────
+## DOCS
 
 Architecture, domain model, API contract, and sync strategy: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -71,6 +69,6 @@ Environment variables: [.env.example](.env.example)
 
 ---
 
-## ── OFFLINE MODEL ──────────────────────────────────────────
+## OFFLINE MODEL
 
 Data reads and writes hit IndexedDB first; the UI never waits on the network. Changes queue locally and flush to the API when connectivity returns. Deletes are tombstones so they can sync. Conflicts are surfaced to the user, never silently discarded.

@@ -48,9 +48,15 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
   --font-sans: var(--font-sans);
+  /* IRANYekanX ships 400 + 700 only; map medium to 700 so it uses the real
+     face instead of a browser-synthesized weight. Drop this when a Medium
+     woff2 is added to apps/web/app/fonts. */
+  --font-weight-medium: 700;
 }
 
 :root {
+  color-scheme: light;
+  --grid-line: oklch(0.556 0 0 / 8%);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -86,6 +92,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+  --grid-line: oklch(1 0 0 / 7%);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -125,15 +133,34 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "ss02";
+    /* Square grid backdrop — two crossed 1px lines per cell */
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  /* Chrome autofill paints its own blue fill; force theme colors. Chrome
+     protects its autofill background, so the only reliable override is an
+     opaque inset shadow painted on top of it. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:autofill,
+  input:autofill:hover,
+  input:autofill:focus {
+    -webkit-text-fill-color: var(--foreground) !important;
+    caret-color: var(--foreground);
+    -webkit-box-shadow: 0 0 0 1000px var(--background) inset !important;
+    box-shadow: 0 0 0 1000px var(--background) inset !important;
+    transition: background-color 9999s ease-out;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
-}
-
-.ss02 {
-  -moz-font-feature-settings: "ss02";
-  -webkit-font-feature-settings: "ss02";
-  font-feature-settings: "ss02";
+  img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
 }

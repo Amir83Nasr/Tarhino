@@ -6,6 +6,11 @@ import { useState } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 
 import { LessonCard } from "@/features/teaching/lesson-card"
 import { LessonDialog } from "@/features/teaching/lesson-dialog"
@@ -29,7 +34,7 @@ export default function TodayPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="font-heading text-lg">امروز</h1>
@@ -37,9 +42,16 @@ export default function TodayPage() {
             {formatFullDate(today)}
           </p>
         </div>
-        <Button size="icon" onClick={openNew} aria-label="افزودن درس">
-          <Plus />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button size="icon" onClick={openNew} aria-label="افزودن درس" />
+            }
+          >
+            <Plus />
+          </TooltipTrigger>
+          <TooltipContent>افزودن درس</TooltipContent>
+        </Tooltip>
       </div>
 
       {holidays?.map((holiday) => (
@@ -52,12 +64,12 @@ export default function TodayPage() {
       ))}
 
       {plans === undefined ? (
-        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
         </div>
       ) : plans.length ? (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
           {plans.map((plan) => (
             <LessonCard
               key={plan.id}

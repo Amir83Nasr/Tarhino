@@ -127,6 +127,12 @@ export function isWeekend(date: Date): boolean {
   return weekdayIndex(date) === 6 // جمعه
 }
 
+/** پنج‌شنبه و جمعه — تعطیل رسمی مدارس ابتدایی. */
+export function isSchoolWeekend(date: Date): boolean {
+  const index = weekdayIndex(date)
+  return index === 5 || index === 6
+}
+
 export function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&

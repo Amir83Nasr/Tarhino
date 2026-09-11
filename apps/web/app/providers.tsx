@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
 import { Toaster } from "@workspace/ui/components/sonner"
+import { TooltipProvider } from "@workspace/ui/components/tooltip"
 
 import { ThemeProvider } from "@/components/theme-provider"
 
@@ -39,11 +40,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        {children}
-        <Toaster position="top-center" richColors />
-        <ServiceWorker />
-      </ThemeProvider>
+      <TooltipProvider>
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-center" richColors />
+          <ServiceWorker />
+        </ThemeProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }

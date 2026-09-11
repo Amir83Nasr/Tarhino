@@ -1,3 +1,4 @@
+import type { Viewport } from "next"
 import { Geist_Mono } from "next/font/google"
 import localFont from "next/font/local"
 
@@ -24,8 +25,17 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata = {
-  title: "طرحینو",
+  title: "Tarhino",
   description: "برنامه‌ریزی ساده، تدریس بهتر",
+  applicationName: "Tarhino",
+}
+
+// Chrome toolbar takes --primary: light oklch(0.514 0.222 16.935), dark oklch(0.455 0.188 13.697).
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#be123c" },
+    { media: "(prefers-color-scheme: dark)", color: "#9f1239" },
+  ],
 }
 
 export default function RootLayout({

@@ -11,6 +11,87 @@ export class ApiError extends Error {
   }
 }
 
+// ── ERROR TRANSLATION ──────────────────────────────────────
+// Every server-facing message the UI shows must be Persian in the app font.
+// The API returns English details, so translate them here, at the single choke
+// point all requests go through. Unknown details fall back to a status-based
+// Persian message; never surface raw English text to the user.
+
+const DETAIL_TRANSLATIONS: Record<string, string> = {
+  "Not authenticated": "نشست شما پایان یافته است، دوباره وارد شوید",
+  "Invalid phone or password": "شماره موبایل یا گذرواژه نادرست است",
+  "Phone number already registered": "این شماره قبلاً ثبت شده است",
+  "Missing refresh token": "نشست شما پایان یافته است، دوباره وارد شوید",
+  "Invalid refresh token": "نشست شما پایان یافته است، دوباره وارد شوید",
+  "Refresh token no longer valid": "نشست شما پایان یافته است، دوباره وارد شوید",
+  "Not found": "مورد موردنظر پیدا نشد",
+  "ID already in use": "این شناسه قبلاً استفاده شده است",
+}
+
+const FIELD_TRANSLATIONS: Record<string, string> = {
+  phone: "شماره موبایل",
+  password: "گذرواژه",
+  first_name: "نام",
+  last_name: "نام خانوادگی",
+  class_id: "کلاس",
+  subject_id: "درس",
+  period_id: "زنگ",
+  activity: "فعالیت",
+  date: "تاریخ",
+  name: "نام",
+  label: "نام زنگ",
+  grade: "پایه",
+  start_time: "ساعت شروع",
+  end_time: "ساعت پایان",
+  color: "رنگ",
+  notes: "یادداشت",
+  status: "وضعیت",
+  order_index: "ترتیب",
+}
+
+const VALIDATION_MSG_TRANSLATIONS: Record<string, (f: string) => string> = {
+  "Field required": (f) => `فیلد «${f}» الزامی است`,
+  "Invalid Iranian mobile number": () =>
+    "شماره موبایل معتبر نیست؛ نمونه: ۰۹۱۲۳۴۵۶۷۸۹",
+}
+
+function translateDetail(status: number, detail: string): string {
+  const exact = DETAIL_TRANSLATIONS[detail]
+  if (exact) return exact
+  // "Unknown period_id" style from the teaching router.
+  const unknown = detail.match(/^Unknown (\w+)$/)
+  const field = unknown?.[1]
+  if (field) return `«${FIELD_TRANSLATIONS[field] ?? field}» معتبر نیست`
+  return fallbackForStatus(status)
+}
+
+function translateValidation(detail: unknown[]): string {
+  for (const item of detail) {
+    const entry = item as { loc?: unknown[]; msg?: string }
+    if (!entry || typeof entry.msg !== "string") continue
+    const fieldKey = Array.isArray(entry.loc)
+      ? String(entry.loc[entry.loc.length - 1] ?? "")
+      : ""
+    const field = FIELD_TRANSLATIONS[fieldKey] ?? fieldKey
+    // Pydantic prefixes custom validator messages with "Value error, ".
+    const msg = entry.msg.replace(/^Value error,\s*/, "")
+    const translate = VALIDATION_MSG_TRANSLATIONS[msg]
+    if (translate) return translate(field)
+    if (field) return `«${field}» نامعتبر است`
+  }
+  return "اطلاعات ارسالی نامعتبر است"
+}
+
+function fallbackForStatus(status: number): string {
+  if (status === 401 || status === 403)
+    return "نشست شما پایان یافته است، دوباره وارد شوید"
+  if (status === 404) return "مورد موردنظر پیدا نشد"
+  if (status === 409) return "این اطلاعات با تغییرات دیگران در تضاد است"
+  if (status === 429) return "تعداد درخواست‌ها زیاد است؛ کمی بعد تلاش کنید"
+  if (status >= 500) return "خطایی از سمت سرور رخ داد؛ لطفاً بعداً تلاش کنید"
+  return "درخواست ناموفق بود"
+}
+
 // ── TOKEN STORAGE ──────────────────────────────────────────
 // ponytail: access token in localStorage. The refresh token is an httpOnly cookie
 // the browser sends automatically, so JS never holds a long-lived credential.
@@ -49,12 +130,25 @@ export async function apiFetch<T>(
   const token = getAccessToken()
   if (token) headers.set("Authorization", `Bearer ${token}`)
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    credentials: "include",
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers,
+      credentials: "include",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch (error) {
+    // fetch rejects with "Failed to fetch" on network failure (offline, wrong
+    // API URL, CORS refusal). Show a Persian message instead of the raw error.
+    if (error instanceof TypeError) {
+      throw new ApiError(
+        0,
+        "ارتباط با سرور برقرار نشد؛ اتصال اینترنت را بررسی کنید"
+      )
+    }
+    throw error
+  }
 
   // One silent refresh attempt, then give up.
   if (response.status === 401 && retryOnUnauthorized) {
@@ -74,12 +168,13 @@ export async function apiFetch<T>(
 async function readError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { detail?: unknown }
-    if (typeof data.detail === "string") return data.detail
-    if (Array.isArray(data.detail)) return "اطلاعات ارسالی نامعتبر است"
+    if (typeof data.detail === "string")
+      return translateDetail(response.status, data.detail)
+    if (Array.isArray(data.detail)) return translateValidation(data.detail)
   } catch {
     // fall through to the generic message
   }
-  return `خطای سرور (${response.status})`
+  return fallbackForStatus(response.status)
 }
 
 let refreshInFlight: Promise<boolean> | null = null
