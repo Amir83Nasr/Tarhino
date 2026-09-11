@@ -6,6 +6,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect } from "react"
 
+import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { SyncBadge } from "@/components/sync-badge"
@@ -31,8 +32,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (status !== "authenticated") {
     return (
-      <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
-        در حال بارگذاری…
+      <div className="flex min-h-svh flex-col">
+        <div className="border-b px-4">
+          <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="size-8 rounded-full" />
+          </div>
+        </div>
+        <main className="flex-1 px-4 pt-4 pb-24 md:pb-8">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        </main>
       </div>
     )
   }

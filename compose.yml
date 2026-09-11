@@ -1,0 +1,28 @@
+# ─── TARHINO DOCKER STACK ─────────────────────────────────
+# Run from the repo root:  docker compose up --build
+# Both services read the root .env; the API never gets secrets at build time.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: tarhino-api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle at build time — rebuild when it changes.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    image: tarhino-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api

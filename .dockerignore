@@ -1,0 +1,43 @@
+# Tarhino | طرحینو — shared by both image builds (context = repo root)
+
+# ─── DEPENDENCIES ─────────────────────────────────────────
+node_modules
+**/node_modules
+.venv
+**/.venv
+
+# ─── LOGS / HISTORY / TELEMETRY ───────────────────────────
+npm-debug.log*
+.pnpm-debug.log*
+
+# ─── CACHE / DOWNLOADED ARTIFACTS ─────────────────────────
+__pycache__
+**/__pycache__
+.pytest_cache
+**/.pytest_cache
+.ruff_cache
+**/.ruff_cache
+.turbo
+**/.turbo
+.next
+**/.next
+coverage
+
+# ─── BUILD / DIST ─────────────────────────────────────────
+out
+dist
+build
+*.tsbuildinfo
+
+# ─── SECRETS / CREDENTIALS / TOKENS ───────────────────────
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# ─── OS / EDITOR CLUTTER ──────────────────────────────────
+.DS_Store
+.git
+.github
+.claude
+.agents

@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
+import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
 import {
   Tooltip,
@@ -79,7 +80,7 @@ function NamedSection<T extends { id: string; name: string }>({
 }: {
   title: string
   placeholder: string
-  items: T[]
+  items: T[] | undefined
   api: NamedApi
 }) {
   const [draft, setDraft] = useState("")
@@ -98,20 +99,26 @@ function NamedSection<T extends { id: string; name: string }>({
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-2">
-            <Input
-              defaultValue={item.name}
-              onBlur={(e) => {
-                const name = e.target.value.trim()
-                if (name && name !== item.name)
-                  void run(() => api.rename(item.id, name))
-                else e.target.value = item.name
-              }}
-            />
-            <DeleteButton onClick={() => void run(() => api.remove(item.id))} />
-          </div>
-        ))}
+        {items === undefined
+          ? Array.from({ length: 3 }, (_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))
+          : items.map((item) => (
+              <div key={item.id} className="flex items-center gap-2">
+                <Input
+                  defaultValue={item.name}
+                  onBlur={(e) => {
+                    const name = e.target.value.trim()
+                    if (name && name !== item.name)
+                      void run(() => api.rename(item.id, name))
+                    else e.target.value = item.name
+                  }}
+                />
+                <DeleteButton
+                  onClick={() => void run(() => api.remove(item.id))}
+                />
+              </div>
+            ))}
 
         <form
           className="flex items-center gap-2"
@@ -143,7 +150,7 @@ export function ClassesSection() {
     <NamedSection
       title="کلاس‌ها"
       placeholder="مثلاً هفتم الف"
-      items={classes ?? []}
+      items={classes}
       api={{ create: addClass, rename: renameClass, remove: removeClass }}
     />
   )
@@ -155,7 +162,7 @@ export function SubjectsSection() {
     <NamedSection
       title="درس‌ها"
       placeholder="مثلاً ریاضی"
-      items={subjects ?? []}
+      items={subjects}
       api={{ create: addSubject, rename: renameSubject, remove: removeSubject }}
     />
   )
@@ -259,9 +266,13 @@ export function PeriodsSection() {
         <CardTitle>زنگ‌ها</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {periods?.map((period, index) => (
-          <PeriodRow key={period.id} period={period} index={index} />
-        ))}
+        {periods === undefined
+          ? Array.from({ length: 2 }, (_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))
+          : periods.map((period, index) => (
+              <PeriodRow key={period.id} period={period} index={index} />
+            ))}
 
         <form className="flex items-center gap-2" onSubmit={submit}>
           <Input
