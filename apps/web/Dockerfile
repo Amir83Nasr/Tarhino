@@ -23,8 +23,6 @@ COPY packages/typescript-config/package.json packages/typescript-config/package.
 # the image); sharp/unrs-resolver use prebuilt binaries, nothing to compile.
 # Note: eslint-config / typescript-config get no node_modules from pnpm's
 # isolated layout — they only need their package.json present in the build stage.
-# --ignore-scripts skips the root `prepare: lefthook install` (no git repo in
-# the image); sharp/unrs-resolver use prebuilt binaries, nothing to compile.
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ── BUILD ────────────────────────────────────────────────────
@@ -40,6 +38,8 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
 COPY --from=deps /app/packages/eslint-config/node_modules ./packages/eslint-config/node_modules
 COPY tsconfig.json turbo.json ./
+# typescript-config is needed for the tsconfig `extends` to resolve in the build.
+COPY packages/typescript-config ./packages/typescript-config
 COPY packages/ui ./packages/ui
 COPY apps/web ./apps/web
 # The root .env is intentionally not copied: pass NEXT_PUBLIC_API_URL as a

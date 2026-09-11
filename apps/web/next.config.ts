@@ -10,6 +10,9 @@ const rootEnv = resolve(import.meta.dirname, "../../.env")
 if (existsSync(rootEnv)) process.loadEnvFile(rootEnv)
 
 const nextConfig: NextConfig = {
+  // In the Docker build the pnpm layout hides next/package.json from the inferred
+  // root, so point Turbopack at the monorepo root explicitly.
+  turbopack: { root: resolve(import.meta.dirname, "../..") },
   transpilePackages: ["@workspace/ui"],
   // Dev-only: allow the LAN origin so a phone on the same Wi-Fi can load /_next assets.
   allowedDevOrigins: ["192.168.1.20"],
