@@ -9,7 +9,6 @@ import {
   type QueueOp,
   type SyncQueueItem,
 } from "@/db"
-import type { SyncStatus } from "@/lib/api/types"
 
 // Local-first data access. Reads come from Dexie, writes land in Dexie and the
 // sync queue in the same transaction, so the UI never waits on a request. This
@@ -195,31 +194,4 @@ export async function replaceSynced<T extends Row>(
     }))
 
   await table.bulkPut(incoming as unknown as Local<T>[])
-}
-
-// ponytail: one switch instead of a table registry — a Record<EntityName, …>
-// collapses into an uncallable union of Dexie table types. Add a registry only
-// if a sixth entity shows up.
-export async function markSyncStatus(
-  entity: EntityName,
-  id: string,
-  status: SyncStatus
-): Promise<void> {
-  switch (entity) {
-    case "classes":
-      await db.classes.update(id, { sync_status: status })
-      return
-    case "subjects":
-      await db.subjects.update(id, { sync_status: status })
-      return
-    case "periods":
-      await db.periods.update(id, { sync_status: status })
-      return
-    case "lesson_plans":
-      await db.lesson_plans.update(id, { sync_status: status })
-      return
-    case "holidays":
-      await db.holidays.update(id, { sync_status: status })
-      return
-  }
 }

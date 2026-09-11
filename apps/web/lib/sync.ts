@@ -124,6 +124,9 @@ export async function push(): Promise<number> {
 }
 
 async function markConflict(entity: EntityName, id: string): Promise<void> {
+  // ponytail: one switch instead of a table registry — a Record<EntityName, …>
+  // collapses into an uncallable union of Dexie table types. Add a registry only
+  // if a sixth entity shows up.
   switch (entity) {
     case "classes":
       await db.classes.update(id, { sync_status: "conflict" })
