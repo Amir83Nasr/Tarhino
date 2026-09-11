@@ -13,11 +13,14 @@ import {
 import { DialogFooter } from "@workspace/ui/components/dialog"
 import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 
+import { useQueryClient } from "@tanstack/react-query"
+
 import { logout } from "@/features/auth/api"
 import { useAuthStore } from "@/stores/auth"
 
 export default function ProfilePage() {
   const router = useRouter()
+  const client = useQueryClient()
   const user = useAuthStore((s) => s.user)
   const setUser = useAuthStore((s) => s.setUser)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -27,6 +30,8 @@ export default function ProfilePage() {
     setPending(true)
     try {
       await logout()
+      // Drop the previous account's rows: the cache is per browser, not per user.
+      client.clear()
       setUser(null)
       router.replace("/login")
     } finally {

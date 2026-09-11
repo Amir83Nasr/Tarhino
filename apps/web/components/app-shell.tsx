@@ -12,7 +12,7 @@ import {
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
@@ -27,13 +27,54 @@ const NAV = [
   { href: "/profile", label: "پروفایل", icon: User },
 ] as const
 
+// ── TAB NAV (TEST) ──────────────────────────────────────────────
+// Slide on navbar tab change only; no finger-drag navigation.
+function tabIndexOf(pathname: string) {
+  return NAV.findIndex(
+    ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
+  )
+}
+
+function reducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { status } = useCurrentUser()
   const router = useRouter()
+  const pathname = usePathname()
+  const tabIndex = tabIndexOf(pathname)
+  const [enterDir, setEnterDir] = useState<-1 | 0 | 1>(0)
+  const prevTabRef = useRef(tabIndex)
 
   useEffect(() => {
     if (status === "anonymous") router.replace("/login")
   }, [status, router])
+
+  // Prefetch tab neighbors so the target opens instantly.
+  useEffect(() => {
+    const i = NAV.findIndex(
+      ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
+    )
+    if (i < 0) return
+    for (const j of [i - 1, i + 1]) {
+      const href = NAV[j]?.href
+      if (href) router.prefetch(href)
+    }
+  }, [pathname, router])
+
+  // Page-enter slide after a navbar tab change. Direction follows the
+  // tab's visual side: higher index sits left in RTL, so moving there
+  // slides in from the left (and vice versa).
+  useEffect(() => {
+    const prev = prevTabRef.current
+    prevTabRef.current = tabIndex
+    if (tabIndex < 0 || prev < 0 || tabIndex === prev) return
+    if (reducedMotion()) return
+    setEnterDir(tabIndex > prev ? -1 : 1)
+    const t = window.setTimeout(() => setEnterDir(0), 420)
+    return () => window.clearTimeout(t)
+  }, [tabIndex])
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -63,10 +104,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="flex-1 px-4 pt-4 pb-4 md:pb-8">
+      <main className="flex-1 overflow-x-clip px-4 pt-4 pb-4 md:pb-8">
         {/* Header and nav are static, so only the page body waits on the session. */}
         {status === "authenticated" ? (
-          children
+          <div
+            key={tabIndex}
+            className={cn(
+              enterDir === 1 && "tab-enter-right",
+              enterDir === -1 && "tab-enter-left"
+            )}
+          >
+            {children}
+          </div>
         ) : (
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
             <Skeleton className="h-7 w-32" />
@@ -189,13 +238,16 @@ function BottomNav() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 rounded-full py-1.5 text-xs transition-colors",
+                  "flex flex-col items-center gap-0.5 rounded-full py-1.5 text-xs transition-colors active:scale-95",
                   active
                     ? "bg-primary/10 font-medium text-primary"
                     : "text-muted-foreground"
                 )}
               >
-                <Icon className="size-5" />
+                <Icon
+                  key={active ? `on-${href}` : `off-${href}`}
+                  className={cn("size-5", active && "tab-pop")}
+                />
                 {label}
               </Link>
             </li>

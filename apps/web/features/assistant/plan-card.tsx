@@ -22,7 +22,11 @@ import { TimeInput } from "@/components/time-input"
 import { ApiError, apiFetch } from "@/lib/api/client"
 import type { LessonPlan } from "@/lib/api/types"
 import { formatNumericDate, fromISODate, parseJalali } from "@/lib/date/jalali"
-import { useLookups, type LessonPlanInput } from "@/features/teaching/hooks"
+import {
+  appendPlansToCache,
+  useLookups,
+  type LessonPlanInput,
+} from "@/features/teaching/hooks"
 import { useQueryClient } from "@tanstack/react-query"
 import { resolvePlanDraft, type PlanDraft } from "@/features/assistant/ai"
 
@@ -142,7 +146,9 @@ function PlanBatch({
         return { ...next, ...nextFailed }
       })
       setSavedCount((n) => n + result.created.length)
-      await client.invalidateQueries({ queryKey: ["lesson-plans"] })
+      // Created rows land in the cache; the failed keys stay for retry, so no
+      // full list refetch on either path.
+      appendPlansToCache(client, result.created)
       if (result.errors.length === 0) {
         toast.success(`${result.created.length} مورد در برنامه ثبت شد`)
         onDone()
@@ -289,7 +295,7 @@ export function PlanCard({
     }
     setBusy(true)
     try {
-      await apiFetch<LessonPlan>("/lesson-plans", {
+      const saved = await apiFetch<LessonPlan>("/lesson-plans", {
         method: "POST",
         body: {
           date,
@@ -303,7 +309,7 @@ export function PlanCard({
           notes: notes.trim(),
         },
       })
-      await client.invalidateQueries({ queryKey: ["lesson-plans"] })
+      appendPlansToCache(client, [saved])
       setDone(true)
       if (!single) onSaved()
     } catch (error) {

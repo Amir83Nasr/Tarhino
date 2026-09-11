@@ -2,7 +2,7 @@
 
 import { Plus, Send, Sparkles, User } from "lucide-react"
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useAiSettings } from "@/features/assistant/assistant-settings"
 
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -38,7 +38,7 @@ import {
   type ChatMessage,
   type PlanDraft,
 } from "@/features/assistant/ai"
-import { chat, getAiSettings } from "@/features/assistant/api"
+import { chat } from "@/features/assistant/api"
 import { PlanCards } from "@/features/assistant/plan-card"
 
 type Bubble = {
@@ -254,21 +254,24 @@ function renderMarkdown(text: string): ReactNode[] {
 }
 
 export default function AssistantPage() {
-  // Settings ride on the account, so any device with this login sees them.
-  const { data: settings } = useQuery({
-    queryKey: ["ai-settings"],
-    queryFn: getAiSettings,
-  })
+  // Shared key with the settings tab: one fetch serves both, tab-hopping free.
+  const settings = useAiSettings()
   const { classes, subjects, periods } = useLookups()
 
-  // The assistant knows the program: today, tomorrow, and the next two
-  // weeks day by day, so it can fill any day the teacher names.
+  // The assistant knows the program: one 14-day range covers today, tomorrow
+  // and the fortnight lines below — a single GET, not three, per visit.
   const todayIso = useMemo(() => toISODate(new Date()), [])
   const tomorrowIso = useMemo(() => toISODate(addDays(new Date(), 1)), [])
   const weekEndIso = useMemo(() => toISODate(addDays(new Date(), 13)), [])
-  const todayPlans = useLessonPlans(todayIso, todayIso)
-  const tomorrowPlans = useLessonPlans(tomorrowIso, tomorrowIso)
   const fortnightPlans = useLessonPlans(todayIso, weekEndIso)
+  const todayPlans = useMemo(
+    () => (fortnightPlans ?? []).filter((p) => p.date === todayIso),
+    [fortnightPlans, todayIso]
+  )
+  const tomorrowPlans = useMemo(
+    () => (fortnightPlans ?? []).filter((p) => p.date === tomorrowIso),
+    [fortnightPlans, tomorrowIso]
+  )
 
   const weekLines = useMemo(() => {
     const lines: string[] = []
@@ -311,9 +314,9 @@ export default function AssistantPage() {
     subjects: subjects.map((s) => s.name),
     periods: periods.map((p) => p.label),
     date: formatFullDate(new Date()),
-    plans: todayPlans?.map((p) => p.activity) ?? [],
+    plans: todayPlans.map((p) => p.activity),
     tomorrowDate: formatFullDate(addDays(new Date(), 1)),
-    tomorrowPlans: tomorrowPlans?.map((p) => p.activity) ?? [],
+    tomorrowPlans: tomorrowPlans.map((p) => p.activity),
     weekLines,
   })
 

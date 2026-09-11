@@ -77,6 +77,9 @@ export function AuthForm() {
       return result.user
     },
     onSuccess: (user) => {
+      // A previous account may have left rows behind (logout clears, but a
+      // stale token expiring mid-session must not leak rows across logins).
+      client.clear()
       setUser(user)
       // Warm the week page before navigating: route JS + the lookups it
       // reads first, so it renders full instead of skeleton-by-skeleton.
