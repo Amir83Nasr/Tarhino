@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "طرحینو",
-    short_name: "طرحینو",
+    name: "Tarhino",
+    short_name: "Tarhino",
     description: "برنامه‌ریزی ساده، تدریس بهتر",
     id: "/",
     scope: "/",
@@ -14,12 +14,6 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#ffffff",
     theme_color: "#be123c",
     icons: [
-      {
-        src: "/icon-192.png",
-        sizes: "192x192",
-        type: "image/png",
-        purpose: "maskable",
-      },
       {
         src: "/icon-512.png",
         sizes: "512x512",

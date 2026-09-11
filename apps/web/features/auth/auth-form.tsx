@@ -1,6 +1,6 @@
 "use client"
 
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
@@ -16,13 +16,22 @@ import { toast } from "@workspace/ui/components/sonner"
 
 import { ApiError } from "@/lib/api/client"
 import { checkPhone, login, register } from "@/features/auth/api"
+import { listClasses, listPeriods, listSubjects } from "@/features/teaching/api"
 import { toLatinDigits } from "@/lib/date/jalali"
 import { useAuthStore } from "@/stores/auth"
+
+// Same 10-min lookup cache as hooks.ts: the week page reads these keys first,
+// so a warm cache means no loading state after login.
+const LOOKUP_PREFETCH = {
+  staleTime: 10 * 60_000,
+  gcTime: 30 * 60_000,
+} as const
 
 type Step = "phone" | "login" | "register"
 
 export function AuthForm() {
   const router = useRouter()
+  const client = useQueryClient()
   const setUser = useAuthStore((s) => s.setUser)
 
   const [step, setStep] = useState<Step>("phone")
@@ -68,7 +77,25 @@ export function AuthForm() {
     },
     onSuccess: (user) => {
       setUser(user)
-      router.replace("/today")
+      // Warm the week page before navigating: route JS + the lookups it
+      // reads first, so it renders full instead of skeleton-by-skeleton.
+      router.prefetch("/week")
+      void client.prefetchQuery({
+        queryKey: ["classes"],
+        queryFn: listClasses,
+        ...LOOKUP_PREFETCH,
+      })
+      void client.prefetchQuery({
+        queryKey: ["subjects"],
+        queryFn: listSubjects,
+        ...LOOKUP_PREFETCH,
+      })
+      void client.prefetchQuery({
+        queryKey: ["periods"],
+        queryFn: listPeriods,
+        ...LOOKUP_PREFETCH,
+      })
+      router.replace("/week")
     },
     onError: (error) =>
       toast.error(

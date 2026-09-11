@@ -2,7 +2,7 @@ import { toGregorian as jalaaliToGregorian, toJalaali } from "jalaali-js"
 
 // All Jalali/Persian presentation lives here. Components call these helpers and
 // never touch Intl or jalaali-js directly. Dates are stored Gregorian everywhere
-// else in the app (API, Dexie) — this module is the only conversion boundary.
+// else in the app (API, server) — this module is the only conversion boundary.
 
 const FA_LOCALE = "fa-IR-u-ca-persian"
 const TEHRAN_TZ = "Asia/Tehran"

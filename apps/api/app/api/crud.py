@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -20,11 +20,6 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 ValidateFn = Callable[[AsyncSession, uuid.UUID, dict[str, Any], uuid.UUID | None], Awaitable[None]]
 
 
-def _as_utc(value: datetime) -> datetime:
-    """Postgres returns aware datetimes; a client may send a naive one."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-
-
 def build_crud_router[M: UserScoped](
     *,
     model: type[M],
@@ -37,11 +32,10 @@ def build_crud_router[M: UserScoped](
     validate: ValidateFn | None = None,
     date_column: Any = None,
 ) -> APIRouter:
-    """Wire standard list/create/patch/soft-delete routes for a user-scoped entity.
+    """Wire standard list/create/patch/delete routes for a user-scoped entity.
 
     Owned entities differ only by their schemas and an optional ownership check, so
-    the routes are generated instead of copied five times. Anything beyond plain
-    scoped CRUD (calendar projection, sync) gets its own module.
+    the routes are generated instead of copied five times.
     """
     router = APIRouter(prefix=prefix, tags=[tag])
     item_config = {"response_model": out_schema}
@@ -55,22 +49,16 @@ def build_crud_router[M: UserScoped](
     async def list_items(
         user: CurrentUser,
         session: Session,
-        updated_since: Annotated[datetime | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 200,
         date_from: Annotated[date | None, Query()] = None,
         date_to: Annotated[date | None, Query()] = None,
-        include_deleted: Annotated[bool, Query()] = False,
     ) -> list[Any]:
         stmt = select(model).where(read_filter(user))
-        if not include_deleted:
-            stmt = stmt.where(model.deleted_at.is_(None))
 
         # ponytail: cursor is updated_at alone, so rows sharing a timestamp with a
         # previous page's last row can be skipped. Move to (updated_at, id) when a
         # user has enough rows for it to matter.
         stmt = stmt.order_by(model.updated_at, model.id).limit(limit)
-        if updated_since is not None:
-            stmt = stmt.where(model.updated_at > updated_since)
         # ponytail: range filter only for date-keyed entities (plans, holidays).
         # Add a real calendar projection when the week view needs aggregates.
         if date_column is not None:
@@ -87,20 +75,10 @@ def build_crud_router[M: UserScoped](
         session: Session,
     ) -> Any:
         data = payload.model_dump()
-        client_id = data.pop("id", None)
-
-        # Idempotency: an offline client that re-sends after a dropped response
-        # gets its own row back instead of a duplicate-key error.
-        if client_id is not None:
-            existing = await session.get(model, client_id)
-            if existing is not None:
-                if existing.user_id != user.id:
-                    raise HTTPException(status.HTTP_409_CONFLICT, "ID already in use")
-                return existing
 
         if validate is not None:
             await validate(session, user.id, data, None)
-        row = model(id=client_id or uuid.uuid4(), user_id=user.id, **data)
+        row = model(id=uuid.uuid4(), user_id=user.id, **data)
         session.add(row)
         await session.commit()
         await session.refresh(row)
@@ -118,16 +96,6 @@ def build_crud_router[M: UserScoped](
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
 
         data = payload.model_dump(exclude_unset=True)
-        base_updated_at = data.pop("base_updated_at", None)
-
-        # Optimistic concurrency: the client tells us which version it edited. A
-        # mismatch means another device got there first, so refuse rather than
-        # silently clobber.
-        if base_updated_at is not None and _as_utc(row.updated_at) != _as_utc(base_updated_at):
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "این رکورد روی دستگاه دیگری تغییر کرده است",
-            )
 
         if validate is not None:
             await validate(session, user.id, data, item_id)
@@ -144,8 +112,7 @@ def build_crud_router[M: UserScoped](
         if row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
 
-        # Tombstone, not DELETE: the row has to survive so the removal can sync.
-        row.deleted_at = datetime.now(UTC)
+        await session.delete(row)
         await session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -155,9 +122,7 @@ def build_crud_router[M: UserScoped](
 async def count_live(session: AsyncSession, model: type[UserScoped], user_id: uuid.UUID) -> int:
     return (
         await session.scalar(
-            select(func.count())
-            .select_from(model)
-            .where(model.user_id == user_id, model.deleted_at.is_(None))
+            select(func.count()).select_from(model).where(model.user_id == user_id)
         )
         or 0
     )

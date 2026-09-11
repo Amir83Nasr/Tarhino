@@ -10,6 +10,9 @@ const rootEnv = resolve(import.meta.dirname, "../../.env")
 if (existsSync(rootEnv)) process.loadEnvFile(rootEnv)
 
 const nextConfig: NextConfig = {
+  // lucide-react ships one module per icon: without this the whole set lands
+  // in every page bundle.
+  experimental: { optimizePackageImports: ["lucide-react"] },
   // In the Docker build the pnpm layout hides next/package.json from the inferred
   // root, so point Turbopack at the monorepo root explicitly.
   turbopack: { root: resolve(import.meta.dirname, "../..") },

@@ -1,67 +1,81 @@
 "use client"
 
-import { useMutation } from "@tanstack/react-query"
-import { useLiveQuery } from "dexie-react-hooks"
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 
-import { db } from "@/db"
-import { createLocal, deleteLocal, updateLocal } from "@/lib/db/repo"
-import type { LessonPlan, LessonStatus } from "@/lib/api/types"
+import {
+  createLessonPlan,
+  deleteLessonPlan,
+  listClasses,
+  listHolidays,
+  listLessonPlans,
+  listPeriods,
+  listSubjects,
+  updateLessonPlan,
+  type LessonPlanInput,
+} from "@/features/teaching/api"
+import type { LessonPlan } from "@/lib/api/types"
 
-export type LessonPlanInput = {
-  date: string
-  activity: string
-  class_id: string | null
-  subject_id: string | null
-  period_id: string | null
-  start_time: string | null
-  end_time: string | null
-  status: LessonStatus
-  notes?: string
-}
+export type { LessonPlanInput }
 
 // ── READS ──────────────────────────────────────────────────
-// Everything reads from Dexie. Sync keeps Dexie current; the UI never blocks on
-// a request and works the same offline.
+// Server is the source of truth. Date ranges are part of the key so the day
+// and week views cache independently.
 
 export function useLessonPlans(from: string, to: string) {
-  return useLiveQuery(
-    () =>
-      db.lesson_plans
-        .where("date")
-        .between(from, to, true, true)
-        .filter((plan) => !plan.deleted_at)
-        .toArray(),
-    [from, to]
-  )
+  const query = useQuery({
+    queryKey: ["lesson-plans", from, to],
+    queryFn: () => listLessonPlans(from, to),
+    // Week navigation swaps the key; keep the old days on screen instead of
+    // flashing skeletons while the new range loads.
+    placeholderData: keepPreviousData,
+  })
+  return query.data
 }
 
 export function useHolidays(from: string, to: string) {
-  return useLiveQuery(
-    () =>
-      db.holidays
-        .where("date")
-        .between(from, to, true, true)
-        .filter((holiday) => !holiday.deleted_at)
-        .toArray(),
-    [from, to]
-  )
+  const query = useQuery({
+    queryKey: ["holidays", from, to],
+    queryFn: () => listHolidays(from, to),
+    placeholderData: keepPreviousData,
+  })
+  return query.data
 }
 
+// Lookups barely change, so they stay fresh 10 min and never refetch on
+// window focus: every page would otherwise re-fire the same 3 GETs.
+const LOOKUP_CACHE = {
+  staleTime: 10 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+} as const
+
 export function useClasses() {
-  return useLiveQuery(() => db.classes.filter((c) => !c.deleted_at).toArray())
+  return useQuery({
+    queryKey: ["classes"],
+    queryFn: listClasses,
+    ...LOOKUP_CACHE,
+  }).data
 }
 
 export function useSubjects() {
-  return useLiveQuery(() => db.subjects.filter((s) => !s.deleted_at).toArray())
+  return useQuery({
+    queryKey: ["subjects"],
+    queryFn: listSubjects,
+    ...LOOKUP_CACHE,
+  }).data
 }
 
 export function usePeriods() {
-  return useLiveQuery(() =>
-    db.periods
-      .orderBy("order_index")
-      .filter((p) => !p.deleted_at)
-      .toArray()
-  )
+  return useQuery({
+    queryKey: ["periods"],
+    queryFn: listPeriods,
+    ...LOOKUP_CACHE,
+  }).data
 }
 
 /** Name lookups shared by the day and week views. */
@@ -84,28 +98,135 @@ export function useLookups() {
 }
 
 // ── WRITES ─────────────────────────────────────────────────
-// Local write, then queue. The mutation resolves as soon as Dexie commits — no
-// network in the path, so it works identically offline.
+// Optimistic: the list updates instantly, the server confirms in the
+// background. Rollback on error. No refetch after write: the server returns
+// the saved row and onSuccess swaps it into the cache, so a save costs one
+// request instead of one plus a full list GET.
+
+type PlansClient = ReturnType<typeof useQueryClient>
+type PlansSnapshot = ReturnType<PlansClient["getQueriesData"]>
+
+async function snapshotPlans(client: PlansClient): Promise<PlansSnapshot> {
+  await client.cancelQueries({ queryKey: ["lesson-plans"] })
+  return client.getQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] })
+}
+
+function restorePlans(client: PlansClient, snapshot: PlansSnapshot) {
+  snapshot.forEach(([key, data]) => client.setQueryData(key, data))
+}
+
+/** Swap the server-confirmed row into every cached range; drop our temp row. */
+function swapSavedRow(
+  client: PlansClient,
+  saved: LessonPlan,
+  dropId: string | null,
+  tempId: string | null
+) {
+  client
+    .getQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] })
+    .forEach(([key]) => {
+      const [, from, to] = key as [string, string?, string?]
+      const inRange = !from || !to || (from <= saved.date && saved.date <= to)
+      client.setQueryData<LessonPlan[]>(key, (old) => {
+        const list = (old ?? []).filter(
+          (p) => p.id !== dropId && p.id !== tempId
+        )
+        return inRange ? [...list, saved] : list
+      })
+    })
+}
 
 export function useSaveLessonPlan(plan: LessonPlan | null, onDone: () => void) {
+  const client = useQueryClient()
   return useMutation({
-    mutationFn: async (input: LessonPlanInput) => {
+    mutationFn: (input: LessonPlanInput) =>
+      plan ? updateLessonPlan(plan.id, input) : createLessonPlan(input),
+    onMutate: async (input) => {
+      const previous = await snapshotPlans(client)
+      let tempId: string | null = null
       if (plan) {
-        await updateLocal("lesson_plans", db.lesson_plans, plan.id, input)
-        return
+        client.setQueriesData<LessonPlan[]>(
+          { queryKey: ["lesson-plans"] },
+          (old) =>
+            old?.map((p) =>
+              p.id === plan.id
+                ? { ...p, ...input, notes: input.notes ?? p.notes }
+                : p
+            )
+        )
+      } else {
+        const now = new Date().toISOString()
+        tempId = `temp-${now}`
+        const temp: LessonPlan = {
+          id: tempId,
+          created_at: now,
+          updated_at: now,
+          date: input.date,
+          activity: input.activity,
+          class_id: input.class_id,
+          subject_id: input.subject_id,
+          period_id: input.period_id,
+          start_time: input.start_time,
+          end_time: input.end_time,
+          status: input.status,
+          notes: input.notes ?? "",
+        }
+        // Only ranges containing the new date get the row.
+        client
+          .getQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] })
+          .forEach(([key]) => {
+            const [, from, to] = key as [string, string?, string?]
+            if (!from || !to || (from <= input.date && input.date <= to)) {
+              client.setQueryData<LessonPlan[]>(key, (old) => [
+                ...(old ?? []),
+                temp,
+              ])
+            }
+          })
       }
-      await createLocal("lesson_plans", db.lesson_plans, {
-        ...input,
-        notes: input.notes ?? "",
-      })
+      // Dialog closes now; the error toast still fires if the server rejects.
+      onDone()
+      return { previous, tempId }
     },
-    onSuccess: onDone,
+    onSuccess: (saved, _input, context) => {
+      // Server row wins: temp id gone, no refetch needed.
+      swapSavedRow(client, saved, plan?.id ?? null, context?.tempId ?? null)
+    },
+    onError: (_error, _input, context) => {
+      if (context) restorePlans(client, context.previous)
+    },
   })
 }
 
 export function useDeleteLessonPlan() {
+  const client = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
-      deleteLocal("lesson_plans", db.lesson_plans, id),
+    mutationFn: (id: string) => deleteLessonPlan(id),
+    onMutate: async (id) => {
+      const previous = await snapshotPlans(client)
+      client.setQueriesData<LessonPlan[]>(
+        { queryKey: ["lesson-plans"] },
+        (old) => old?.filter((p) => p.id !== id)
+      )
+      return { previous }
+    },
+    // Row already removed from cache: a 204 needs no refetch.
+    onError: (_error, _id, context) => {
+      if (context) restorePlans(client, context.previous)
+    },
+  })
+}
+
+/** Warm the adjacent weeks so navigation feels instant. Fire and forget. */
+export function prefetchWeek(client: PlansClient, from: string, to: string) {
+  void client.prefetchQuery({
+    queryKey: ["lesson-plans", from, to],
+    queryFn: () => listLessonPlans(from, to),
+    staleTime: 30_000,
+  })
+  void client.prefetchQuery({
+    queryKey: ["holidays", from, to],
+    queryFn: () => listHolidays(from, to),
+    staleTime: 30_000,
   })
 }

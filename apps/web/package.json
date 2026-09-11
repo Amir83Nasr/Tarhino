@@ -14,8 +14,6 @@
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
     "@workspace/ui": "workspace:*",
-    "dexie": "^4.4.6",
-    "dexie-react-hooks": "^4.4.0",
     "jalaali-js": "^2.0.1",
     "lucide-react": "^1.44.0",
     "next": "16.2.6",

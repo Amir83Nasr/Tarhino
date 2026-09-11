@@ -1,6 +1,14 @@
 "use client"
 
-import { CalendarDays, CalendarRange, Settings } from "lucide-react"
+import {
+  CalendarRange,
+  Mail,
+  Phone,
+  Send,
+  Settings,
+  Sparkles,
+  User,
+} from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -9,14 +17,14 @@ import { useEffect } from "react"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { SyncBadge } from "@/components/sync-badge"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useCurrentUser } from "@/hooks/use-current-user"
 
 const NAV = [
-  { href: "/today", label: "امروز", icon: CalendarDays },
-  { href: "/week", label: "هفته", icon: CalendarRange },
+  { href: "/week", label: "برنامه", icon: CalendarRange },
+  { href: "/assistant", label: "دستیار", icon: Sparkles },
   { href: "/settings", label: "تنظیمات", icon: Settings },
+  { href: "/profile", label: "پروفایل", icon: User },
 ] as const
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -32,14 +40,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 border-b bg-background/80 px-4 backdrop-blur-xl supports-backdrop-filter:bg-background/55">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3">
           <Link
-            href="/today"
+            href="/week"
             className="flex shrink-0 items-center gap-2 rounded-md md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:outline-none"
           >
             <Image
-              src="/logo.svg"
+              src="/square.svg"
               alt="طرحینو"
-              width={26}
-              height={26}
+              width={32}
+              height={32}
               priority
             />
             <span className="text-base font-bold">طرحینو</span>
@@ -67,11 +75,74 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </main>
-      <SyncBadge />
+      <Footer />
       <div className="md:hidden">
         <BottomNav />
       </div>
     </div>
+  )
+}
+
+function Footer() {
+  const year = new Date().toLocaleDateString("fa-IR", { year: "numeric" })
+
+  return (
+    <footer className="hidden border-t bg-background md:block">
+      <div className="mx-auto grid w-full max-w-6xl gap-x-6 gap-y-4 px-4 py-5 md:grid-cols-3">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">ارتباط با ما</p>
+          <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+            <li className="flex items-center gap-2">
+              <Send className="size-4 shrink-0" />
+              <span>بله:</span>
+              <a
+                href="https://ble.ir/Amir83Nasr"
+                target="_blank"
+                rel="noreferrer"
+                dir="ltr"
+                className="text-foreground underline underline-offset-4"
+              >
+                Amir83Nasr
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <Phone className="size-4 shrink-0" />
+              <span>تلفن:</span>
+              <a href="tel:+989306853363" className="text-foreground">
+                ۰۹۳۰۶۸۵۳۳۶۳
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <Mail className="size-4 shrink-0" />
+              <span>ایمیل:</span>
+              <a
+                href="mailto:amirhossein.nasrollahi.main@gmail.com"
+                dir="ltr"
+                className="text-foreground underline underline-offset-4"
+              >
+                amirhossein.nasrollahi.main@gmail.com
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">انتقادها و پیشنهادها</p>
+          <p className="text-sm text-muted-foreground">
+            نظر شما طرحینو را بهتر می‌کند. در صفحه جدا توضیح داده‌ایم چه بنویسید
+            و از چه راهی بفرستید.
+          </p>
+          <Link
+            href="/feedback"
+            className="w-fit rounded-md text-sm text-primary underline underline-offset-4"
+          >
+            ثبت انتقاد یا پیشنهاد
+          </Link>
+        </div>
+        <p className="text-xs text-muted-foreground md:self-end md:justify-self-end">
+          © {year} طرحینو
+        </p>
+      </div>
+    </footer>
   )
 }
 

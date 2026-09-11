@@ -15,6 +15,11 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(100))
     last_name: Mapped[str] = mapped_column(String(100))
     password_hash: Mapped[str] = mapped_column(String(255))
+    ai_base_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    ai_model: Mapped[str | None] = mapped_column(String(200), default=None)
+    # OpenAI-compatible API key, Fernet-encrypted with SECRET_KEY. Plaintext
+    # only ever exists in memory during a request; the column holds bytes.
+    ai_api_key_enc: Mapped[bytes | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

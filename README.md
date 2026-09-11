@@ -2,18 +2,18 @@
 
 # Tarhino
 
-Offline-first lesson planning and schedule management for teachers. Persian, RTL, mobile-first, installable as a PWA.
+Online lesson planning and schedule management for teachers. Persian, RTL, mobile-first.
 
 ---
 
 ## STACK
 
-| Layer   | Tech                                                                                                     |
-| ------- | -------------------------------------------------------------------------------------------------------- |
-| Web     | Next.js, React, TypeScript, Tailwind CSS, shadcn/ui (Base UI), Zustand, TanStack Query, Dexie, IndexedDB |
-| API     | Python, FastAPI, Pydantic, SQLAlchemy 2, Alembic                                                         |
-| DB      | PostgreSQL (Neon)                                                                                        |
-| Tooling | pnpm workspaces, Turborepo, uv, ESLint, Prettier                                                         |
+| Layer   | Tech                                                                                   |
+| ------- | -------------------------------------------------------------------------------------- |
+| Web     | Next.js, React, TypeScript, Tailwind CSS, shadcn/ui (Base UI), Zustand, TanStack Query |
+| API     | Python, FastAPI, Pydantic, SQLAlchemy 2, Alembic                                       |
+| DB      | PostgreSQL (Neon)                                                                      |
+| Tooling | pnpm workspaces, Turborepo, uv, ESLint, Prettier                                       |
 
 ---
 
@@ -63,12 +63,6 @@ pnpm format
 
 ## DOCS
 
-Architecture, domain model, API contract, and sync strategy: [ARCHITECTURE.md](ARCHITECTURE.md)
+Architecture, domain model, and API contract: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 Environment variables: [.env.example](.env.example)
-
----
-
-## OFFLINE MODEL
-
-Data reads and writes hit IndexedDB first; the UI never waits on the network. Changes queue locally and flush to the API when connectivity returns. Deletes are tombstones so they can sync. Conflicts are surfaced to the user, never silently discarded.

@@ -1,5 +1,6 @@
 "use client"
 
+import { useQueryClient } from "@tanstack/react-query"
 import { Download, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 
@@ -20,6 +21,7 @@ import {
   type ImportPreview,
 } from "@/features/excel/import-export"
 import { useLookups } from "@/features/teaching/hooks"
+import type { LessonPlan } from "@/lib/api/types"
 import { formatNumericDate, fromISODate } from "@/lib/date/jalali"
 import { JalaliDatePicker } from "@/components/jalali-date-picker"
 
@@ -29,7 +31,7 @@ import { JalaliDatePicker } from "@/components/jalali-date-picker"
 // ── SHARED ─────────────────────────────────────────────────
 
 // ApiError messages are Persian (translated in client.ts); anything else (a
-// corrupt workbook, Dexie internals) must not leak English into the toast.
+// corrupt workbook, browser/network internals) must not leak English into the toast.
 function fail(error: unknown) {
   toast.error(error instanceof ApiError ? error.message : "انجام نشد")
 }
@@ -103,6 +105,7 @@ function ExportCard() {
 
 function ImportCard() {
   const lookups = useLookups()
+  const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [fileName, setFileName] = useState("")
@@ -130,7 +133,22 @@ function ImportCard() {
     if (!preview) return
     setBusy(true)
     try {
-      const count = await commitImport(preview.rows)
+      const { count, saved } = await commitImport(preview.rows)
+      // Server rows win: appended straight into every cached range, no GET.
+      // Temp ids cannot exist here — commit never wrote optimistic rows.
+      for (const plan of saved) {
+        queryClient
+          .getQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] })
+          .forEach(([key]) => {
+            const [, from, to] = key as [string, string?, string?]
+            if (!from || !to || (from <= plan.date && plan.date <= to)) {
+              queryClient.setQueryData<LessonPlan[]>(key, (old) => [
+                ...(old ?? []),
+                plan,
+              ])
+            }
+          })
+      }
       toast.success(`${count} طرح اضافه شد`)
       setPreview(null)
       setFileName("")

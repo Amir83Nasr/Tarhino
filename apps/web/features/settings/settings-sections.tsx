@@ -1,5 +1,6 @@
 "use client"
 
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Trash2 } from "lucide-react"
 import { useState } from "react"
 
@@ -26,26 +27,35 @@ import {
   removeClass,
   removePeriod,
   removeSubject,
-  renameClass,
-  renameSubject,
-  savePeriod,
-} from "@/features/settings/local-actions"
+  renameClassAction,
+  renameSubjectAction,
+  savePeriodAction,
+} from "@/features/settings/api"
+import { TimeInput } from "@/components/time-input"
 import { useClasses, usePeriods, useSubjects } from "@/features/teaching/hooks"
 import { ApiError } from "@/lib/api/client"
 import type { Period } from "@/lib/api/types"
 
-// Writes go to Dexie and the sync queue; the UI updates from the live query, so
-// there is no cache to invalidate and no pending state worth showing.
+// Optimistic writes: the list updates instantly, the server confirms in the
+// background. Rollback on error; refetch on settle to swap temp ids.
 
 // ── SHARED ─────────────────────────────────────────────────
 
-type NamedApi = {
-  create: (name: string) => Promise<unknown>
-  rename: (id: string, name: string) => Promise<unknown>
-  remove: (id: string) => Promise<unknown>
+type NamedMutations = {
+  create: ReturnType<typeof useMutation<unknown, unknown, string>>
+  rename: ReturnType<
+    typeof useMutation<unknown, unknown, { id: string; name: string }>
+  >
+  remove: ReturnType<typeof useMutation<unknown, unknown, string>>
 }
 
-function DeleteButton({ onClick }: { onClick: () => void }) {
+function DeleteButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void
+  disabled?: boolean
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -56,6 +66,7 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
             size="icon-sm"
             className="text-muted-foreground hover:text-destructive"
             onClick={onClick}
+            disabled={disabled}
             aria-label="حذف"
           />
         }
@@ -67,8 +78,8 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-// ApiError messages are Persian (translated in client.ts); anything else (Dexie
-// internals) must not leak English into the toast.
+// ApiError messages are Persian (translated in client.ts); anything else
+// (browser/network internals) must not leak English into the toast.
 function fail(error: unknown) {
   toast.error(error instanceof ApiError ? error.message : "ذخیره نشد")
 }
@@ -88,22 +99,28 @@ function NamedSection<T extends { id: string; name: string }>({
   placeholder,
   empty,
   items,
-  api,
+  mutations,
 }: {
   title: string
   placeholder: string
   empty: string
   items: T[] | undefined
-  api: NamedApi
+  mutations: NamedMutations
 }) {
   const [draft, setDraft] = useState("")
+  const pending = mutations.create.isPending
 
-  async function run(action: () => Promise<unknown>) {
-    try {
-      await action()
-    } catch (error) {
-      fail(error)
-    }
+  function create(event: React.FormEvent) {
+    event.preventDefault()
+    const name = draft.trim()
+    if (!name) return
+    setDraft("")
+    mutations.create.mutate(name, { onError: fail })
+  }
+
+  function rename(item: T, name: string) {
+    if (!name || name === item.name) return
+    mutations.rename.mutate({ id: item.id, name }, { onError: fail })
   }
 
   return (
@@ -122,38 +139,36 @@ function NamedSection<T extends { id: string; name: string }>({
           items.map((item) => (
             <div key={item.id} className="flex items-center gap-2">
               <Input
+                key={item.name}
                 defaultValue={item.name}
                 onBlur={(e) => {
                   const name = e.target.value.trim()
-                  if (name && name !== item.name)
-                    void run(() => api.rename(item.id, name))
+                  if (name && name !== item.name) rename(item, name)
                   else e.target.value = item.name
                 }}
               />
               <DeleteButton
-                onClick={() => void run(() => api.remove(item.id))}
+                disabled={mutations.remove.isPending}
+                onClick={() =>
+                  mutations.remove.mutate(item.id, { onError: fail })
+                }
               />
             </div>
           ))
         )}
 
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            const name = draft.trim()
-            if (!name) return
-            setDraft("")
-            void run(() => api.create(name))
-          }}
-        >
+        <form className="flex items-center gap-2" onSubmit={create}>
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={placeholder}
           />
-          <Button type="submit" variant="outline">
-            افزودن
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={pending || !draft.trim()}
+          >
+            {pending ? "…" : "افزودن"}
           </Button>
         </form>
       </CardContent>
@@ -161,28 +176,101 @@ function NamedSection<T extends { id: string; name: string }>({
   )
 }
 
+type NamedItem = { id: string; name: string }
+
+// The server returns the saved row; onSuccess swaps it in so create/rename
+// need no refetch. Deletes return 204 and are already removed from cache.
+function useNamedMutations(kind: "classes" | "subjects"): NamedMutations {
+  const client = useQueryClient()
+  const key = [kind]
+  const isClass = kind === "classes"
+
+  async function snapshot() {
+    await client.cancelQueries({ queryKey: key })
+    return client.getQueryData<NamedItem[]>(key)
+  }
+
+  const create = useMutation({
+    mutationFn: (name: string) => (isClass ? addClass(name) : addSubject(name)),
+    onMutate: async (name) => {
+      const previous = await snapshot()
+      const now = new Date().toISOString()
+      const temp: NamedItem = { id: `temp-${now}`, name }
+      client.setQueryData<NamedItem[]>(key, (old) => [...(old ?? []), temp])
+      return { previous, tempId: temp.id }
+    },
+    onSuccess: (saved, _v, context) => {
+      client.setQueryData<NamedItem[]>(key, (old) =>
+        (old ?? [])
+          .filter((item) => item.id !== context?.tempId)
+          .concat(saved as NamedItem)
+      )
+    },
+    onError: (_e, _v, context) =>
+      context?.previous !== undefined &&
+      client.setQueryData(key, context.previous),
+  })
+  const rename = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      isClass ? renameClassAction(id, name) : renameSubjectAction(id, name),
+    onMutate: async ({ id, name }) => {
+      const previous = await snapshot()
+      client.setQueryData<NamedItem[]>(key, (old) =>
+        old?.map((item) => (item.id === id ? { ...item, name } : item))
+      )
+      return { previous }
+    },
+    onSuccess: (saved) => {
+      client.setQueryData<NamedItem[]>(key, (old) =>
+        old?.map((item) =>
+          item.id === (saved as NamedItem).id ? (saved as NamedItem) : item
+        )
+      )
+    },
+    onError: (_e, _v, context) =>
+      context?.previous !== undefined &&
+      client.setQueryData(key, context.previous),
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => (isClass ? removeClass(id) : removeSubject(id)),
+    onMutate: async (id) => {
+      const previous = await snapshot()
+      client.setQueryData<NamedItem[]>(key, (old) =>
+        old?.filter((item) => item.id !== id)
+      )
+      return { previous }
+    },
+    onError: (_e, _v, context) =>
+      context?.previous !== undefined &&
+      client.setQueryData(key, context.previous),
+  })
+  return { create, rename, remove }
+}
+
 export function ClassesSection() {
   const classes = useClasses()
+  const mutations = useNamedMutations("classes")
   return (
     <NamedSection
       title="کلاس‌ها"
       placeholder="مثلاً هفتم الف"
       empty="هنوز کلاسی اضافه نشده."
       items={classes}
-      api={{ create: addClass, rename: renameClass, remove: removeClass }}
+      mutations={mutations}
     />
   )
 }
 
 export function SubjectsSection() {
   const subjects = useSubjects()
+  const mutations = useNamedMutations("subjects")
   return (
     <NamedSection
       title="درس‌ها"
       placeholder="مثلاً ریاضی"
       empty="هنوز درسی اضافه نشده."
       items={subjects}
-      api={{ create: addSubject, rename: renameSubject, remove: removeSubject }}
+      mutations={mutations}
     />
   )
 }
@@ -191,7 +279,126 @@ export function SubjectsSection() {
 
 const toInput = (time: string) => time.slice(0, 5)
 
-function PeriodRow({ period, index }: { period: Period; index: number }) {
+type PeriodPatch = {
+  id: string
+  label: string
+  start: string
+  end: string
+  order_index: number
+}
+
+function usePeriodMutations() {
+  const client = useQueryClient()
+  const key = ["periods"] as const
+
+  async function snapshot() {
+    await client.cancelQueries({ queryKey: key })
+    return client.getQueryData<Period[]>(key)
+  }
+
+  const save = useMutation({
+    mutationFn: ({ id, label, start, end, order_index }: PeriodPatch) =>
+      savePeriodAction(id, {
+        label,
+        start_time: start,
+        end_time: end,
+        order_index,
+      }),
+    onMutate: async (patch) => {
+      const previous = await snapshot()
+      client.setQueryData<Period[]>(key, (old) =>
+        old?.map((p) =>
+          p.id === patch.id
+            ? {
+                ...p,
+                label: patch.label,
+                start_time: patch.start,
+                end_time: patch.end,
+              }
+            : p
+        )
+      )
+      return { previous }
+    },
+    onSuccess: (saved) => {
+      client.setQueryData<Period[]>(key, (old) =>
+        old?.map((p) => (p.id === saved.id ? saved : p))
+      )
+    },
+    onError: (_e, _v, context) =>
+      context?.previous !== undefined &&
+      client.setQueryData(key, context.previous),
+  })
+  const add = useMutation({
+    mutationFn: ({
+      label,
+      start,
+      end,
+    }: {
+      label: string
+      start: string
+      end: string
+    }) =>
+      // Optimistic temp row already appended; count live rows for the index.
+      addPeriod(
+        label,
+        start,
+        end,
+        (client.getQueryData<Period[]>(key) ?? []).filter(
+          (p) => !p.id.startsWith("temp-")
+        ).length
+      ),
+    onMutate: async ({ label, start, end }) => {
+      const previous = await snapshot()
+      const now = new Date().toISOString()
+      const temp: Period = {
+        id: `temp-${now}`,
+        created_at: now,
+        updated_at: now,
+        label,
+        start_time: start,
+        end_time: end,
+        order_index: previous?.length ?? 0,
+      }
+      client.setQueryData<Period[]>(key, (old) => [...(old ?? []), temp])
+      return { previous, tempId: temp.id }
+    },
+    // Server row wins: temp id swapped, no refetch needed.
+    onSuccess: (saved, _v, context) => {
+      client.setQueryData<Period[]>(key, (old) =>
+        (old ?? []).filter((p) => p.id !== context?.tempId).concat(saved)
+      )
+    },
+    onError: (_e, _v, context) =>
+      context?.previous !== undefined &&
+      client.setQueryData(key, context.previous),
+  })
+  // 204: row already removed from cache, nothing to refetch.
+  const remove = useMutation({
+    mutationFn: (id: string) => removePeriod(id),
+    onMutate: async (id) => {
+      const previous = await snapshot()
+      client.setQueryData<Period[]>(key, (old) =>
+        old?.filter((p) => p.id !== id)
+      )
+      return { previous }
+    },
+    onError: (_e, _v, context) =>
+      context?.previous !== undefined &&
+      client.setQueryData(key, context.previous),
+  })
+  return { save, add, remove }
+}
+
+function PeriodRow({
+  period,
+  index,
+  mutations,
+}: {
+  period: Period
+  index: number
+  mutations: ReturnType<typeof usePeriodMutations>
+}) {
   const [label, setLabel] = useState(period.label)
   const [start, setStart] = useState(toInput(period.start_time))
   const [end, setEnd] = useState(toInput(period.end_time))
@@ -201,21 +408,15 @@ function PeriodRow({ period, index }: { period: Period; index: number }) {
     start !== toInput(period.start_time) ||
     end !== toInput(period.end_time)
 
-  async function save() {
+  function save() {
     if (end <= start) {
       toast.error("ساعت پایان باید بعد از شروع باشد")
       return
     }
-    try {
-      await savePeriod(period.id, {
-        label,
-        start_time: start,
-        end_time: end,
-        order_index: index,
-      })
-    } catch (error) {
-      fail(error)
-    }
+    mutations.save.mutate(
+      { id: period.id, label, start, end, order_index: index },
+      { onError: fail }
+    )
   }
 
   return (
@@ -225,35 +426,42 @@ function PeriodRow({ period, index }: { period: Period; index: number }) {
         onChange={(e) => setLabel(e.target.value)}
         aria-label="نام زنگ"
       />
-      <Input
-        type="time"
+      <TimeInput
         value={start}
-        onChange={(e) => setStart(e.target.value)}
+        onChange={setStart}
         className="w-32 shrink-0"
         aria-label="شروع"
       />
-      <Input
-        type="time"
+      <TimeInput
         value={end}
-        onChange={(e) => setEnd(e.target.value)}
+        onChange={setEnd}
         className="w-32 shrink-0"
         aria-label="پایان"
       />
-      <Button type="button" variant="outline" disabled={!dirty} onClick={save}>
-        ذخیره
+      <Button
+        type="button"
+        variant="outline"
+        disabled={!dirty || mutations.save.isPending}
+        onClick={save}
+      >
+        {mutations.save.isPending ? "…" : "ذخیره"}
       </Button>
-      <DeleteButton onClick={() => void removePeriod(period.id).catch(fail)} />
+      <DeleteButton
+        disabled={mutations.remove.isPending}
+        onClick={() => mutations.remove.mutate(period.id, { onError: fail })}
+      />
     </div>
   )
 }
 
 export function PeriodsSection() {
   const periods = usePeriods()
+  const mutations = usePeriodMutations()
   const [label, setLabel] = useState("")
   const [start, setStart] = useState("")
   const [end, setEnd] = useState("")
 
-  async function submit(event: React.FormEvent) {
+  function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!label.trim() || !start || !end) {
       toast.error("نام و ساعت زنگ را کامل کنید")
@@ -263,14 +471,17 @@ export function PeriodsSection() {
       toast.error("ساعت پایان باید بعد از شروع باشد")
       return
     }
-    try {
-      await addPeriod(label.trim(), start, end)
-      setLabel("")
-      setStart("")
-      setEnd("")
-    } catch (error) {
-      fail(error)
-    }
+    mutations.add.mutate(
+      { label: label.trim(), start, end },
+      {
+        onSuccess: () => {
+          setLabel("")
+          setStart("")
+          setEnd("")
+        },
+        onError: fail,
+      }
+    )
   }
 
   return (
@@ -287,7 +498,12 @@ export function PeriodsSection() {
           <EmptyHint text="هنوز زنگی اضافه نشده." />
         ) : (
           periods.map((period, index) => (
-            <PeriodRow key={period.id} period={period} index={index} />
+            <PeriodRow
+              key={period.id}
+              period={period}
+              index={index}
+              mutations={mutations}
+            />
           ))
         )}
 
@@ -298,22 +514,24 @@ export function PeriodsSection() {
             placeholder="مثلاً زنگ اول"
             aria-label="نام زنگ"
           />
-          <Input
-            type="time"
+          <TimeInput
             value={start}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={setStart}
             className="w-32 shrink-0"
             aria-label="شروع"
           />
-          <Input
-            type="time"
+          <TimeInput
             value={end}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={setEnd}
             className="w-32 shrink-0"
             aria-label="پایان"
           />
-          <Button type="submit" variant="outline">
-            افزودن
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={mutations.add.isPending}
+          >
+            {mutations.add.isPending ? "…" : "افزودن"}
           </Button>
         </form>
       </CardContent>

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.router import router as ai_router
 from app.auth.router import router as auth_router
 from app.core.config import get_settings
 from app.teaching.router import all_routers as teaching_routers
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(ai_router, prefix=API_PREFIX)
 app.include_router(users_router, prefix=API_PREFIX)
 for _router in teaching_routers:
     app.include_router(_router, prefix=API_PREFIX)

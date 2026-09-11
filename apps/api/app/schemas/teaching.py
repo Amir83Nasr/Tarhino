@@ -14,20 +14,6 @@ class _ScopedOut(BaseModel):
     id: uuid.UUID
     created_at: dt.datetime
     updated_at: dt.datetime
-    # Present on tombstones: the offline client needs deletions, not just live rows.
-    deleted_at: dt.datetime | None
-
-
-class _ClientCreate(BaseModel):
-    """Offline clients mint the UUID locally so a retry is idempotent."""
-
-    id: uuid.UUID | None = None
-
-
-class _ClientUpdate(BaseModel):
-    """Last known server version; a mismatch means someone else edited the row."""
-
-    base_updated_at: dt.datetime | None = None
 
 
 # ── CLASSES ────────────────────────────────────────────────
@@ -39,11 +25,11 @@ class ClassFields(BaseModel):
     color: str | None = Field(default=None, max_length=32)
 
 
-class ClassCreate(_ClientCreate, ClassFields):
+class ClassCreate(ClassFields):
     pass
 
 
-class ClassUpdate(_ClientUpdate):
+class ClassUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     grade: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=32)
@@ -61,11 +47,11 @@ class SubjectFields(BaseModel):
     color: str | None = Field(default=None, max_length=32)
 
 
-class SubjectCreate(_ClientCreate, SubjectFields):
+class SubjectCreate(SubjectFields):
     pass
 
 
-class SubjectUpdate(_ClientUpdate):
+class SubjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     color: str | None = Field(default=None, max_length=32)
 
@@ -89,11 +75,11 @@ class PeriodFields(BaseModel):
         return self
 
 
-class PeriodCreate(_ClientCreate, PeriodFields):
+class PeriodCreate(PeriodFields):
     order_index: int | None = None
 
 
-class PeriodUpdate(_ClientUpdate):
+class PeriodUpdate(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=100)
     start_time: dt.time | None = None
     end_time: dt.time | None = None
@@ -129,11 +115,11 @@ class LessonPlanFields(BaseModel):
     status: LessonStatus = "planned"
 
 
-class LessonPlanCreate(_ClientCreate, LessonPlanFields):
+class LessonPlanCreate(LessonPlanFields):
     pass
 
 
-class LessonPlanUpdate(_ClientUpdate):
+class LessonPlanUpdate(BaseModel):
     date: dt.date | None = None
     class_id: uuid.UUID | None = None
     subject_id: uuid.UUID | None = None
@@ -159,11 +145,11 @@ class HolidayFields(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
 
 
-class HolidayCreate(_ClientCreate, HolidayFields):
+class HolidayCreate(HolidayFields):
     pass
 
 
-class HolidayUpdate(_ClientUpdate):
+class HolidayUpdate(BaseModel):
     date: dt.date | None = None
     title: str | None = Field(default=None, min_length=1, max_length=200)
     type: HolidayType | None = None

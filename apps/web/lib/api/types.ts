@@ -1,6 +1,5 @@
 export type LessonStatus = "planned" | "done" | "cancelled"
 export type HolidayType = "official" | "school" | "personal"
-export type SyncStatus = "synced" | "pending" | "conflict"
 
 export type User = {
   id: string
@@ -9,12 +8,11 @@ export type User = {
   last_name: string
 }
 
-/** Fields every server row carries. `deleted_at` is the tombstone marker. */
+/** Fields every server row carries. */
 type ServerRow = {
   id: string
   created_at: string
   updated_at: string
-  deleted_at: string | null
 }
 
 export type TeachingClass = ServerRow & {

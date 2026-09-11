@@ -19,7 +19,9 @@ import {
 import { toast } from "@workspace/ui/components/sonner"
 
 import { JalaliDatePicker } from "@/components/jalali-date-picker"
+import { TimeInput } from "@/components/time-input"
 import {
+  useDeleteLessonPlan,
   useLookups,
   useSaveLessonPlan,
   type LessonPlanInput,
@@ -101,6 +103,16 @@ function LessonForm({
   const [status, setStatus] = useState<LessonStatus>(plan?.status ?? "planned")
 
   const save = useSaveLessonPlan(plan, onDone)
+  const remove = useDeleteLessonPlan()
+
+  function deletePlan() {
+    if (!plan) return
+    remove.mutate(plan.id, {
+      onSuccess: onDone,
+      onError: (error) =>
+        toast.error(error instanceof ApiError ? error.message : "حذف نشد"),
+    })
+  }
 
   function pickPeriod(id: string) {
     setPeriodId(id)
@@ -132,7 +144,7 @@ function LessonForm({
     save.mutate(input, {
       onError: (error) =>
         // ApiError messages are Persian (translated in client.ts); anything
-        // else (Dexie internals) must not leak English into the toast.
+        // else (browser/network internals) must not leak English into the toast.
         toast.error(error instanceof ApiError ? error.message : "ذخیره نشد"),
     })
   }
@@ -224,20 +236,20 @@ function LessonForm({
       <div className="grid grid-cols-3 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="start">شروع</Label>
-          <Input
+          <TimeInput
             id="start"
-            type="time"
             value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
+            onChange={setStartTime}
+            aria-label="ساعت شروع"
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="end">پایان</Label>
-          <Input
+          <TimeInput
             id="end"
-            type="time"
             value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
+            onChange={setEndTime}
+            aria-label="ساعت پایان"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -265,6 +277,17 @@ function LessonForm({
       </div>
 
       <DialogFooter>
+        {plan && (
+          <Button
+            type="button"
+            variant="destructive"
+            className="me-auto"
+            disabled={remove.isPending}
+            onClick={deletePlan}
+          >
+            {remove.isPending ? "در حال حذف…" : "حذف"}
+          </Button>
+        )}
         <Button type="button" variant="outline" onClick={onDone}>
           انصراف
         </Button>

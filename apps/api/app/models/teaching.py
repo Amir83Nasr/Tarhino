@@ -11,7 +11,6 @@ from sqlalchemy import (
     Time,
     Uuid,
     func,
-    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,7 +18,7 @@ from app.db.base import Base
 
 
 class UserScoped(Base):
-    """Base for user-owned rows: UUID pk, ownership, timestamps, tombstone."""
+    """Base for user-owned rows: UUID pk, ownership, timestamps."""
 
     __abstract__ = True
 
@@ -33,7 +32,6 @@ class UserScoped(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
 class TeachingClass(UserScoped):
@@ -65,14 +63,13 @@ class LessonPlan(UserScoped):
     __tablename__ = "lesson_plans"
     __table_args__ = (
         Index("ix_lesson_plans_user_date", "user_id", "date"),
-        # One active plan per (user, date, period); tombstoned rows are exempt.
+        # One plan per (user, date, period); deletes are hard so no exemption needed.
         Index(
             "uq_lesson_plans_active",
             "user_id",
             "date",
             "period_id",
             unique=True,
-            postgresql_where=text("deleted_at IS NULL"),
         ),
     )
 

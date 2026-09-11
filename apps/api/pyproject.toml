@@ -11,13 +11,14 @@ dependencies = [
     "pydantic-settings>=2.13",
     "argon2-cffi>=25.1",
     "pyjwt>=2.10",
+    "httpx>=0.28,<1",
+    "cryptography>=50.0.1",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0",
     "pytest-asyncio>=1.4",
-    "httpx>=0.29",
     "ruff>=0.15",
 ]
 

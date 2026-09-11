@@ -1,9 +1,12 @@
 "use client"
 
-import * as XLSX from "xlsx"
-
-import { db } from "@/db"
-import { createLocal } from "@/lib/db/repo"
+import {
+  createLessonPlan,
+  listClasses,
+  listLessonPlans,
+  listPeriods,
+  listSubjects,
+} from "@/features/teaching/api"
 import {
   formatNumericDate,
   fromISODate,
@@ -22,8 +25,7 @@ import type {
 // Excel round-trip for lesson plans. Export writes Jalali dates — the format
 // teachers live in — and import reads that same format back. Import is two
 // steps: parse() is pure and returns the issues the preview renders; commit()
-// writes drafts through the offline repo, so an imported file syncs like any
-// other edit.
+// POSTs rows to the server.
 
 // ── SHARED ─────────────────────────────────────────────────
 
@@ -112,15 +114,14 @@ export async function exportLessonPlans(
   from: string,
   to: string
 ): Promise<number> {
+  // xlsx is heavy: load it only when the teacher actually exports, so it
+  // never lands in the initial page bundle. Callers already show busy state.
+  const XLSX = await import("xlsx")
   const [plans, classes, subjects, periods] = await Promise.all([
-    db.lesson_plans
-      .where("date")
-      .between(from, to, true, true)
-      .filter((plan) => !plan.deleted_at)
-      .toArray(),
-    db.classes.filter((c) => !c.deleted_at).toArray(),
-    db.subjects.filter((s) => !s.deleted_at).toArray(),
-    db.periods.filter((p) => !p.deleted_at).toArray(),
+    listLessonPlans(from, to),
+    listClasses(),
+    listSubjects(),
+    listPeriods(),
   ])
 
   const sheet = XLSX.utils.json_to_sheet(
@@ -176,6 +177,7 @@ export async function parseImport(
   file: File,
   lookups: Lookups
 ): Promise<ImportPreview> {
+  const XLSX = await import("xlsx")
   const book = XLSX.read(new Uint8Array(await file.arrayBuffer()), {
     type: "array",
   })
@@ -203,9 +205,9 @@ export async function parseImport(
   const periodByName = new Map(lookups.periods.map((p) => [p.label.trim(), p]))
 
   const existing = new Set(
-    (await db.lesson_plans.toArray())
-      .filter((plan) => !plan.deleted_at)
-      .map((plan) => `${plan.date}|${plan.period_id ?? ""}`)
+    (await listLessonPlans("0000-01-01", "9999-12-31")).map(
+      (plan) => `${plan.date}|${plan.period_id ?? ""}`
+    )
   )
 
   const rows: ImportRow[] = []
@@ -297,26 +299,36 @@ export async function parseImport(
 // ── IMPORT: COMMIT ─────────────────────────────────────────
 
 /**
- * Write parsed rows as local drafts. Existing rows are never touched — an
- * import only adds. Every row goes through the offline repo so the queue picks
- * it up on the next sync.
+ * POST parsed rows to the server. Existing rows are never touched — an import
+ * only adds. Requests run 5 at a time: one slow Neon round-trip no longer
+ * blocks the whole file.
  */
-export async function commitImport(rows: ImportRow[]): Promise<number> {
-  for (const row of rows) {
-    // Built field by field: `row` is preview metadata and must never reach the
-    // wire. TypeScript fails the build if ImportRow gains a field and this
-    // literal falls behind.
-    await createLocal("lesson_plans", db.lesson_plans, {
-      date: row.date,
-      class_id: row.class_id,
-      subject_id: row.subject_id,
-      period_id: row.period_id,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      activity: row.activity,
-      notes: row.notes,
-      status: row.status,
+export async function commitImport(rows: ImportRow[]): Promise<{
+  count: number
+  saved: LessonPlan[]
+}> {
+  const saved: LessonPlan[] = []
+  const queue = rows.map(
+    (row) => () =>
+      // Built field by field: `row` is preview metadata and must never reach
+      // the wire. TypeScript fails the build if ImportRow gains a field and
+      // this literal falls behind.
+      createLessonPlan({
+        date: row.date,
+        class_id: row.class_id,
+        subject_id: row.subject_id,
+        period_id: row.period_id,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        activity: row.activity,
+        notes: row.notes,
+        status: row.status,
+      }).then((plan) => void saved.push(plan))
+  )
+  await Promise.all(
+    Array.from({ length: Math.min(5, queue.length) }, async () => {
+      while (queue.length) await queue.shift()?.()
     })
-  }
-  return rows.length
+  )
+  return { count: rows.length, saved }
 }

@@ -8,7 +8,13 @@ import { useLookups } from "@/features/teaching/hooks"
 import { formatTime } from "@/lib/date/jalali"
 import type { LessonPlan, LessonStatus } from "@/lib/api/types"
 
-const STATUS_VARIANT: Record<
+export const STATUS_LABELS: Record<LessonStatus, string> = {
+  planned: "برنامه‌ریزی‌شده",
+  done: "انجام شد",
+  cancelled: "لغو شد",
+}
+
+export const STATUS_VARIANT: Record<
   LessonStatus,
   "secondary" | "default" | "destructive"
 > = {
@@ -50,7 +56,9 @@ export function LessonCard({
                   {formatTime(plan.start_time)}
                 </span>
               )}
-              <Badge variant={STATUS_VARIANT[plan.status]}>{plan.status}</Badge>
+              <Badge variant={STATUS_VARIANT[plan.status]}>
+                {STATUS_LABELS[plan.status]}
+              </Badge>
             </div>
           </CardContent>
         </Card>

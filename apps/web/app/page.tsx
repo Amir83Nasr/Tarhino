@@ -9,7 +9,7 @@ export default function Page() {
   const router = useRouter()
 
   useEffect(() => {
-    router.replace("/today")
+    router.replace("/week")
   }, [router])
 
   return (
