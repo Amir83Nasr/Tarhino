@@ -21,6 +21,7 @@ export default function LoginPage() {
             alt=""
             fill
             priority
+            sizes="(min-width: 1024px) 60vw, 100vw"
             className="object-cover"
           />
         </div>
