@@ -46,6 +46,7 @@ export function AuthForm() {
       .replace(/^(?:\+|00)?98/, "0")
       .replace(/\D/g, "")
   const normalizedPhone = normalizePhone(phone)
+  const phoneValid = /^09\d{9}$/.test(normalizedPhone)
 
   const resolvePhone = useMutation({
     mutationFn: () => checkPhone(normalizedPhone),
@@ -105,8 +106,10 @@ export function AuthForm() {
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault()
-    if (step === "phone") resolvePhone.mutate()
-    else submit.mutate()
+    if (step === "phone") {
+      if (!phoneValid) return
+      resolvePhone.mutate()
+    } else submit.mutate()
   }
 
   const pending = resolvePhone.isPending || submit.isPending
@@ -136,9 +139,16 @@ export function AuthForm() {
                 autoComplete="tel"
                 placeholder="09123456789"
                 value={normalizedPhone}
+                maxLength={11}
+                aria-invalid={phone.length > 0 && !phoneValid}
                 onChange={(e) => setPhone(normalizePhone(e.target.value))}
                 autoFocus
               />
+              {phone.length > 0 && !phoneValid && (
+                <FieldDescription>
+                  شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.
+                </FieldDescription>
+              )}
             </>
           ) : (
             <div className="flex items-center justify-between gap-2">
@@ -197,7 +207,10 @@ export function AuthForm() {
         )}
 
         <Field>
-          <Button type="submit" disabled={pending}>
+          <Button
+            type="submit"
+            disabled={pending || (step === "phone" && !phoneValid)}
+          >
             {pending
               ? "لطفاً صبر کنید…"
               : step === "phone"

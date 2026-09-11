@@ -20,8 +20,7 @@ import {
   parseImport,
   type ImportPreview,
 } from "@/features/excel/import-export"
-import { useLookups } from "@/features/teaching/hooks"
-import type { LessonPlan } from "@/lib/api/types"
+import { appendPlansToCache, useLookups } from "@/features/teaching/hooks"
 import { formatNumericDate, fromISODate } from "@/lib/date/jalali"
 import { JalaliDatePicker } from "@/components/jalali-date-picker"
 
@@ -134,21 +133,8 @@ function ImportCard() {
     setBusy(true)
     try {
       const { count, saved } = await commitImport(preview.rows)
-      // Server rows win: appended straight into every cached range, no GET.
       // Temp ids cannot exist here — commit never wrote optimistic rows.
-      for (const plan of saved) {
-        queryClient
-          .getQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] })
-          .forEach(([key]) => {
-            const [, from, to] = key as [string, string?, string?]
-            if (!from || !to || (from <= plan.date && plan.date <= to)) {
-              queryClient.setQueryData<LessonPlan[]>(key, (old) => [
-                ...(old ?? []),
-                plan,
-              ])
-            }
-          })
-      }
+      appendPlansToCache(queryClient, saved)
       toast.success(`${count} طرح اضافه شد`)
       setPreview(null)
       setFileName("")

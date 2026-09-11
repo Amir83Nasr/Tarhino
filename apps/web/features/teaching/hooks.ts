@@ -5,6 +5,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query"
 
 import {
@@ -26,6 +27,16 @@ export type { LessonPlanInput }
 // Server is the source of truth. Date ranges are part of the key so the day
 // and week views cache independently.
 
+// Tabs unmount pages but the client survives: a range stays fresh 5 min, so
+// tab-hopping renders from cache with zero GETs. Own writes patch the cache
+// directly (see below); other-device edits arrive as background refetch once
+// stale, never a blank skeleton.
+const RANGE_CACHE = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  refetchOnWindowFocus: false,
+} as const
+
 export function useLessonPlans(from: string, to: string) {
   const query = useQuery({
     queryKey: ["lesson-plans", from, to],
@@ -33,6 +44,7 @@ export function useLessonPlans(from: string, to: string) {
     // Week navigation swaps the key; keep the old days on screen instead of
     // flashing skeletons while the new range loads.
     placeholderData: keepPreviousData,
+    ...RANGE_CACHE,
   })
   return query.data
 }
@@ -42,6 +54,7 @@ export function useHolidays(from: string, to: string) {
     queryKey: ["holidays", from, to],
     queryFn: () => listHolidays(from, to),
     placeholderData: keepPreviousData,
+    ...RANGE_CACHE,
   })
   return query.data
 }
@@ -103,7 +116,9 @@ export function useLookups() {
 // the saved row and onSuccess swaps it into the cache, so a save costs one
 // request instead of one plus a full list GET.
 
-type PlansClient = ReturnType<typeof useQueryClient>
+// QueryClient as a type, not a hook call: the helpers below run outside
+// components (tabs, import, assistant), so they take the client as a param.
+type PlansClient = QueryClient
 type PlansSnapshot = ReturnType<PlansClient["getQueriesData"]>
 
 async function snapshotPlans(client: PlansClient): Promise<PlansSnapshot> {
@@ -198,16 +213,36 @@ export function useSaveLessonPlan(plan: LessonPlan | null, onDone: () => void) {
   })
 }
 
+export function removePlanFromCache(client: PlansClient, id: string) {
+  client.setQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] }, (old) =>
+    old?.filter((p) => p.id !== id)
+  )
+}
+
+/** Append server rows into every cached range; import and assistant share it. */
+export function appendPlansToCache(client: PlansClient, saved: LessonPlan[]) {
+  for (const plan of saved) {
+    client
+      .getQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] })
+      .forEach(([key]) => {
+        const [, from, to] = key as [string, string?, string?]
+        if (!from || !to || (from <= plan.date && plan.date <= to)) {
+          client.setQueryData<LessonPlan[]>(key, (old) => [
+            ...(old ?? []),
+            plan,
+          ])
+        }
+      })
+  }
+}
+
 export function useDeleteLessonPlan() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteLessonPlan(id),
     onMutate: async (id) => {
       const previous = await snapshotPlans(client)
-      client.setQueriesData<LessonPlan[]>(
-        { queryKey: ["lesson-plans"] },
-        (old) => old?.filter((p) => p.id !== id)
-      )
+      removePlanFromCache(client, id)
       return { previous }
     },
     // Row already removed from cache: a 204 needs no refetch.
@@ -219,14 +254,16 @@ export function useDeleteLessonPlan() {
 
 /** Warm the adjacent weeks so navigation feels instant. Fire and forget. */
 export function prefetchWeek(client: PlansClient, from: string, to: string) {
+  // Same freshness as a real read: prefetched weeks must survive tab-hopping
+  // as long as visited ones, otherwise the warmup is wasted.
   void client.prefetchQuery({
     queryKey: ["lesson-plans", from, to],
     queryFn: () => listLessonPlans(from, to),
-    staleTime: 30_000,
+    ...RANGE_CACHE,
   })
   void client.prefetchQuery({
     queryKey: ["holidays", from, to],
     queryFn: () => listHolidays(from, to),
-    staleTime: 30_000,
+    ...RANGE_CACHE,
   })
 }

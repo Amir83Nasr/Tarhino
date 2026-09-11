@@ -40,3 +40,25 @@ def test_users_me_requires_bearer_auth() -> None:
     me = schema["paths"][f"{API_PREFIX}/users/me"]["get"]
 
     assert me["security"] == [{"HTTPBearer": []}]
+
+
+def test_lesson_plan_bulk_is_registered() -> None:
+    paths = set(app.openapi()["paths"])
+
+    assert f"{API_PREFIX}/lesson-plans/bulk" in paths
+
+
+def test_lesson_plan_bulk_rejects_empty_and_overlong() -> None:
+    from pydantic import ValidationError
+
+    from app.teaching.router import BulkCreate
+
+    item = {"date": "2026-09-11", "activity": "بازی"}
+
+    with pytest.raises(ValidationError):
+        BulkCreate(items=[])
+
+    with pytest.raises(ValidationError):
+        BulkCreate(items=[item] * 21)
+
+    assert len(BulkCreate(items=[item] * 2).items) == 2

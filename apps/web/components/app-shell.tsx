@@ -36,8 +36,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [status, router])
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="sticky top-0 z-40 border-b bg-background/80 px-4 backdrop-blur-xl supports-backdrop-filter:bg-background/55">
+    <div className="flex min-h-dvh flex-col">
+      <header className="sticky top-0 z-40 border-b bg-background/80 px-4 backdrop-blur-xl supports-backdrop-filter:bg-background/55 print:hidden">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3">
           <Link
             href="/week"
@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="flex-1 px-4 pt-4 pb-24 md:pb-8">
+      <main className="flex-1 px-4 pt-4 pb-4 md:pb-8">
         {/* Header and nav are static, so only the page body waits on the session. */}
         {status === "authenticated" ? (
           children
@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </main>
       <Footer />
-      <div className="md:hidden">
+      <div className="sticky bottom-0 z-40 pt-2 md:hidden print:hidden">
         <BottomNav />
       </div>
     </div>
@@ -87,7 +87,7 @@ function Footer() {
   const year = new Date().toLocaleDateString("fa-IR", { year: "numeric" })
 
   return (
-    <footer className="hidden border-t bg-background md:block">
+    <footer className="hidden border-t bg-background md:block print:hidden">
       <div className="mx-auto grid w-full max-w-6xl gap-x-6 gap-y-4 px-4 py-5 md:grid-cols-3">
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">ارتباط با ما</p>
@@ -179,7 +179,7 @@ function BottomNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+    <nav className="px-4 pb-[calc(env(safe-area-inset-bottom,0)+0.75rem)] [background:linear-gradient(to_top,var(--background)_60%,transparent)]">
       <ul className="mx-auto flex max-w-md rounded-full border bg-background/80 p-1 shadow-lg backdrop-blur-md">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)

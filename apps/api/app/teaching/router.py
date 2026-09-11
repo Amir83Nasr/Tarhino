@@ -1,11 +1,15 @@
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.crud import build_crud_router
+from app.api.deps import CurrentUser
 from app.db.scoped import get_scoped
+from app.db.session import get_session
 from app.models.teaching import Holiday, LessonPlan, Period, Subject, TeachingClass
 from app.schemas.teaching import (
     ClassCreate,
@@ -104,5 +108,64 @@ holidays = build_crud_router(
     extra_where=lambda _user_id: Holiday.user_id.is_(None),
     date_column=Holiday.date,
 )
+
+
+class BulkCreate(BaseModel):
+    items: list[LessonPlanCreate] = Field(min_length=1, max_length=20)
+
+
+class BulkError(BaseModel):
+    index: int
+    detail: str
+
+
+class BulkResult(BaseModel):
+    created: list[LessonPlanOut]
+    errors: list[BulkError]
+
+
+@lesson_plans.post("/bulk", response_model=BulkResult)
+async def bulk_create_plans(
+    payload: BulkCreate,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BulkResult:
+    """Create up to 20 plans in one request; per-row results.
+
+    The assistant batch card posts here after the teacher reviews: valid rows
+    save, conflicting rows (same day+period) come back in `errors` with their
+    index, so the card can keep exactly the failed ones on screen.
+    """
+    created: list[LessonPlan] = []
+    errors: list[BulkError] = []
+    for index, item in enumerate(payload.items):
+        data = item.model_dump()
+        try:
+            await _validate_refs(session, user.id, data, None)
+        except HTTPException as exc:
+            errors.append(BulkError(index=index, detail=str(exc.detail)))
+            continue
+        try:
+            async with session.begin_nested():
+                row = LessonPlan(id=uuid.uuid4(), user_id=user.id, **data)
+                session.add(row)
+                await session.flush()
+        except IntegrityError:
+            errors.append(
+                BulkError(
+                    index=index,
+                    detail="این روز و زنگ قبلاً پر شده است",
+                )
+            )
+            continue
+        created.append(row)
+    await session.commit()
+    for row in created:
+        await session.refresh(row)
+    return BulkResult(
+        created=[LessonPlanOut.model_validate(r) for r in created],
+        errors=errors,
+    )
+
 
 all_routers: list[APIRouter] = [classes, subjects, periods, lesson_plans, holidays]

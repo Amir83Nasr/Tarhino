@@ -1,7 +1,7 @@
 "use client"
 
 import { LayoutGrid, Table2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -16,19 +16,20 @@ export type ViewMode = "card" | "table"
 
 const STORAGE_KEY = "tarhino:lesson-view"
 
-export function useLessonView(): [ViewMode, (mode: ViewMode) => void] {
-  const [mode, setMode] = useState<ViewMode>("card")
+function storedMode(): ViewMode {
+  // Lazy init runs only in the browser: no SSR mismatch, no sync effect.
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === "table"
+      ? "table"
+      : "card"
+  } catch {
+    // Private mode or blocked storage: stay on cards.
+    return "card"
+  }
+}
 
-  // Read after mount so server HTML and first client render always match.
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem(STORAGE_KEY) === "table") {
-        setMode("table")
-      }
-    } catch {
-      // Private mode or blocked storage: stay on cards.
-    }
-  }, [])
+export function useLessonView(): [ViewMode, (mode: ViewMode) => void] {
+  const [mode, setMode] = useState<ViewMode>(storedMode)
 
   function change(next: ViewMode) {
     setMode(next)
@@ -172,11 +173,7 @@ export function LessonTableSkeleton({ rows = 3 }: { rows?: number }) {
       <table className="w-full min-w-xl text-sm">
         <tbody>
           {Array.from({ length: rows }).map((_, index) => (
-            <tr
-              // eslint-disable-next-line react/no-array-index-key
-              key={index}
-              className="border-t border-border first:border-t-0"
-            >
+            <tr key={index} className="border-t border-border first:border-t-0">
               <td className="px-3 py-2">
                 <Skeleton className="h-4 w-3/4" />
               </td>

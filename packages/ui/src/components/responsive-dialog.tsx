@@ -53,7 +53,9 @@ function ResponsiveDialog({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
-      <DrawerContent>
+      {/* Mobile: no auto-focus, so the virtual keyboard stays hidden until
+          the user taps an input. Desktop Dialog keeps the default. */}
+      <DrawerContent initialFocus={false}>
         <DrawerHeader className="text-start">
           <DrawerTitle>{title}</DrawerTitle>
           {description && (

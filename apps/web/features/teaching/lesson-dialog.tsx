@@ -18,7 +18,6 @@ import {
 } from "@workspace/ui/components/select"
 import { toast } from "@workspace/ui/components/sonner"
 
-import { JalaliDatePicker } from "@/components/jalali-date-picker"
 import { TimeInput } from "@/components/time-input"
 import {
   useDeleteLessonPlan,
@@ -92,7 +91,7 @@ function LessonForm({
   }))
 
   const [activity, setActivity] = useState(plan?.activity ?? "")
-  const [date, setDate] = useState(dateProp ?? "")
+  const [date] = useState(dateProp ?? "")
   const [classId, setClassId] = useState(plan?.class_id ?? "")
   const [subjectId, setSubjectId] = useState(plan?.subject_id ?? "")
   const [periodId, setPeriodId] = useState(plan?.period_id ?? "")
@@ -153,12 +152,13 @@ function LessonForm({
     <form onSubmit={submit} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="activity">فعالیت</Label>
+        {/* No autoFocus: desktop Dialog focuses first field itself;
+            on mobile any autofocus pops the virtual keyboard over the drawer. */}
         <Input
           id="activity"
           value={activity}
           onChange={(e) => setActivity(e.target.value)}
           placeholder="مثلاً حل تمرین‌های فصل ۳"
-          autoFocus
         />
       </div>
 
@@ -281,7 +281,7 @@ function LessonForm({
           <Button
             type="button"
             variant="destructive"
-            className="me-auto"
+            className="sm:me-auto"
             disabled={remove.isPending}
             onClick={deletePlan}
           >
