@@ -32,8 +32,9 @@ export const PERSIAN_MONTHS = [
   "اسفند",
 ] as const
 
-// Saturday is the first day of the Iranian week; getDay() is Sunday-based.
-const SATURDAY_OFFSET = 6
+// Saturday is the first day of the Iranian week; getDay() is Sunday-based, so
+// Saturday (6) shifts to 0 and Friday (5) to 6.
+const SATURDAY_OFFSET = 1
 
 // ── CONVERSION ─────────────────────────────────────────────
 
@@ -72,6 +73,13 @@ export function weekdayName(date: Date): string {
 export function formatShortDate(date: Date): string {
   const { day, month } = toJalali(date)
   return `${toPersianDigits(day)} ${monthName(month)}`
+}
+
+/** Numeric Jalali date in the app-wide glyph style: ۱۴۰۵٫۰۵٫۰۵. */
+export function formatNumericDate(date: Date): string {
+  const { day, month, year } = toJalali(date)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return toPersianDigits(`${year}٫${pad(month)}٫${pad(day)}`)
 }
 
 export function formatFullDate(date: Date): string {
@@ -156,8 +164,8 @@ export function fromISODate(iso: string): Date {
 // ── JALALI INPUT ───────────────────────────────────────────
 
 /**
- * Teacher-typed Jalali date — "۱۴۰۴/۰۳/۱۵", "1404-3-15" — to an ISO Gregorian
- * date, or null if it is not a real day.
+ * Teacher-typed Jalali date — "۱۴۰۴/۰۳/۱۵", "1404-3-15", "۱۴۰۵٫۰۵٫۰۵" — to an
+ * ISO Gregorian date, or null if it is not a real day.
  *
  * jalaali-js never throws on overflow, it rolls: 1404/12/30 (1404 is a 365-day
  * year) comes back as 1405/01/01, and 1404/13/1 as 1405/01/02. The round-trip
@@ -166,7 +174,7 @@ export function fromISODate(iso: string): Date {
  */
 export function parseJalali(value: string): string | null {
   const parts = value
-    .split(/[/\-.]/)
+    .split(/[/\-.٫]/) // ٫ — the glyph separator the app displays
     .map((part) => Number(toLatinDigits(part).trim()))
   if (parts.length !== 3) return null
 

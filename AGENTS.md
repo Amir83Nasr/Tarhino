@@ -9,3 +9,5 @@ use Prettier and Ruff for formatting.
 using Python 3.14 and Node 24 version.
 
 use RTL and IranYekanX font.
+
+for dates use this glyph font ۱۴۰۵٫۰۵٫۰۵

@@ -21,6 +21,7 @@ import {
   keepLocalSubject,
 } from "@/features/settings/local-actions"
 import { db } from "@/db"
+import { formatNumericDate, fromISODate } from "@/lib/date/jalali"
 
 // A conflict means another device saved the same row first. The user picks which
 // version survives; nothing is resolved silently.
@@ -62,7 +63,7 @@ export function ConflictsSection() {
       })),
       ...plans.map((p) => ({
         id: p.id,
-        label: `درس روز ${p.date}`,
+        label: `درس روز ${formatNumericDate(fromISODate(p.date))}`,
         keep: () => keepLocalPlan(p.id),
         discard: () => discardLocalPlan(p.id),
       })),
@@ -87,14 +88,8 @@ export function ConflictsSection() {
           >
             <span className="text-sm">{conflict.label}</span>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => void conflict.keep()}>
-                نسخه من
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void conflict.discard()}
-              >
+              <Button onClick={() => void conflict.keep()}>نسخه من</Button>
+              <Button variant="outline" onClick={() => void conflict.discard()}>
                 نسخه سرور
               </Button>
             </div>

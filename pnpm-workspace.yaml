@@ -3,6 +3,8 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  msw: false
   sharp: true
   unrs-resolver: true
-  msw: false
+patchedDependencies:
+  next-themes@0.4.6: patches/next-themes@0.4.6.patch

@@ -4,19 +4,19 @@ import { useEffect, useState } from "react"
 
 /** Browser connectivity. Not a guarantee the API is reachable, just a cheap hint. */
 export function useOnline(): boolean {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine
-  )
+  // Seeded optimistically: the server has no connectivity to report, and a
+  // hydration mismatch here would rebuild the tree on every cold load.
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
-    const goOnline = () => setOnline(true)
-    const goOffline = () => setOnline(false)
+    const update = () => setOnline(navigator.onLine)
 
-    window.addEventListener("online", goOnline)
-    window.addEventListener("offline", goOffline)
+    update()
+    window.addEventListener("online", update)
+    window.addEventListener("offline", update)
     return () => {
-      window.removeEventListener("online", goOnline)
-      window.removeEventListener("offline", goOffline)
+      window.removeEventListener("online", update)
+      window.removeEventListener("offline", update)
     }
   }, [])
 

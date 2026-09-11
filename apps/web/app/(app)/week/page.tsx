@@ -1,19 +1,14 @@
 "use client"
 
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { CalendarOff, ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { LessonCard } from "@/features/teaching/lesson-card"
+import { LessonCard, LessonCardSkeleton } from "@/features/teaching/lesson-card"
 import { LessonDialog } from "@/features/teaching/lesson-dialog"
 import { useHolidays, useLessonPlans } from "@/features/teaching/hooks"
 import {
@@ -57,40 +52,18 @@ export default function WeekPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
-      <header className="mx-auto flex w-full max-w-md items-center justify-between">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => shiftWeek(-1)}
-                aria-label="هفته قبل"
-              />
-            }
-          >
-            <ChevronRight />
-          </TooltipTrigger>
-          <TooltipContent>هفته قبل</TooltipContent>
-        </Tooltip>
+      <header className="mx-auto flex w-full max-w-lg items-center justify-between">
+        <Button size="sm" variant="ghost" onClick={() => shiftWeek(-1)}>
+          <ChevronRight />
+          هفته قبل
+        </Button>
         <span className="text-sm font-medium">
           {monthName(weekStart.month)} {toPersianDigits(weekStart.year)}
         </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => shiftWeek(1)}
-                aria-label="هفته بعد"
-              />
-            }
-          >
-            <ChevronLeft />
-          </TooltipTrigger>
-          <TooltipContent>هفته بعد</TooltipContent>
-        </Tooltip>
+        <Button size="sm" variant="ghost" onClick={() => shiftWeek(1)}>
+          هفته بعد
+          <ChevronLeft />
+        </Button>
       </header>
 
       <ul className="mx-auto grid w-full max-w-md grid-cols-7 gap-1">
@@ -126,24 +99,16 @@ export default function WeekPage() {
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">{formatShortDate(selected)}</h2>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="icon-sm"
-                variant="outline"
-                onClick={() => {
-                  setEditing(null)
-                  setOpen(true)
-                }}
-                aria-label="افزودن درس"
-              />
-            }
-          >
-            <Plus />
-          </TooltipTrigger>
-          <TooltipContent>افزودن درس</TooltipContent>
-        </Tooltip>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setEditing(null)
+            setOpen(true)
+          }}
+        >
+          <Plus />
+          افزودن درس
+        </Button>
       </div>
 
       {selectedHoliday && (
@@ -153,9 +118,9 @@ export default function WeekPage() {
       )}
 
       {plans === undefined ? (
-        <div className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
-          <Skeleton className="h-20 w-full" />
-        </div>
+        <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
+          <LessonCardSkeleton />
+        </ul>
       ) : selectedPlans.length ? (
         <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
           {selectedPlans.map((plan) => (
@@ -170,9 +135,17 @@ export default function WeekPage() {
           ))}
         </ul>
       ) : (
-        <Card>
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            این روز خالی است.
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <CalendarOff className="size-6" />
+            </span>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">این روز خالی است</p>
+              <p className="text-xs text-muted-foreground">
+                برای این روز درسی ثبت نشده.
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}

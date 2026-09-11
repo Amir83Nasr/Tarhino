@@ -131,6 +131,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* IRANYekanX ships 400 + 700 only, so bare h1–h6 resolve to 400 and render
+     thinner than CardTitle and dialog titles. Force every heading to bold. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading font-bold;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "ss02";

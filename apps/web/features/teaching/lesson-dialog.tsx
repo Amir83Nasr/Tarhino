@@ -7,23 +7,31 @@ import { DialogFooter } from "@workspace/ui/components/dialog"
 import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { toast } from "@workspace/ui/components/sonner"
 
+import { JalaliDatePicker } from "@/components/jalali-date-picker"
 import {
   useLookups,
   useSaveLessonPlan,
   type LessonPlanInput,
 } from "@/features/teaching/hooks"
 import type { LessonPlan, LessonStatus } from "@/lib/api/types"
+import { ApiError } from "@/lib/api/client"
 
 const STATUS_LABELS: Record<LessonStatus, string> = {
   planned: "برنامه‌ریزی‌شده",
   done: "انجام شد",
   cancelled: "لغو شد",
 }
-
-const selectClass =
-  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
 
 type Props = {
   open: boolean
@@ -54,7 +62,7 @@ export function LessonDialog({ open, onOpenChange, date, plan = null }: Props) {
 }
 
 function LessonForm({
-  date,
+  date: dateProp,
   plan,
   onDone,
 }: {
@@ -64,7 +72,25 @@ function LessonForm({
 }) {
   const { classes, subjects, periods, period } = useLookups()
 
+  const classItems = [
+    { label: "—", value: null as string | null },
+    ...classes.map((c) => ({ label: c.name, value: c.id as string | null })),
+  ]
+  const subjectItems = [
+    { label: "—", value: null as string | null },
+    ...subjects.map((s) => ({ label: s.name, value: s.id as string | null })),
+  ]
+  const periodItems = [
+    { label: "—", value: null as string | null },
+    ...periods.map((p) => ({ label: p.label, value: p.id as string | null })),
+  ]
+  const statusItems = Object.entries(STATUS_LABELS).map(([value, label]) => ({
+    label,
+    value,
+  }))
+
   const [activity, setActivity] = useState(plan?.activity ?? "")
+  const [date, setDate] = useState(dateProp ?? "")
   const [classId, setClassId] = useState(plan?.class_id ?? "")
   const [subjectId, setSubjectId] = useState(plan?.subject_id ?? "")
   const [periodId, setPeriodId] = useState(plan?.period_id ?? "")
@@ -105,7 +131,9 @@ function LessonForm({
     }
     save.mutate(input, {
       onError: (error) =>
-        toast.error(error instanceof Error ? error.message : "ذخیره نشد"),
+        // ApiError messages are Persian (translated in client.ts); anything
+        // else (Dexie internals) must not leak English into the toast.
+        toast.error(error instanceof ApiError ? error.message : "ذخیره نشد"),
     })
   }
 
@@ -124,55 +152,73 @@ function LessonForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="class">کلاس</Label>
-          <select
-            id="class"
-            className={selectClass}
-            value={classId}
-            onChange={(e) => setClassId(e.target.value)}
+          <Label>کلاس</Label>
+          <Select
+            items={classItems}
+            value={classId || null}
+            onValueChange={(value) => setClassId(value ?? "")}
           >
-            <option value="">—</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectLabel>کلاس‌ها</SelectLabel>
+                {classItems.map((item) => (
+                  <SelectItem key={item.value ?? ""} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="subject">درس</Label>
-          <select
-            id="subject"
-            className={selectClass}
-            value={subjectId}
-            onChange={(e) => setSubjectId(e.target.value)}
+          <Label>درس</Label>
+          <Select
+            items={subjectItems}
+            value={subjectId || null}
+            onValueChange={(value) => setSubjectId(value ?? "")}
           >
-            <option value="">—</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectLabel>درس‌ها</SelectLabel>
+                {subjectItems.map((item) => (
+                  <SelectItem key={item.value ?? ""} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="period">زنگ</Label>
-        <select
-          id="period"
-          className={selectClass}
-          value={periodId}
-          onChange={(e) => pickPeriod(e.target.value)}
+        <Label>زنگ</Label>
+        <Select
+          items={periodItems}
+          value={periodId || null}
+          onValueChange={(value) => pickPeriod(value ?? "")}
         >
-          <option value="">—</option>
-          {periods.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="—" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              <SelectLabel>زنگ‌ها</SelectLabel>
+              {periodItems.map((item) => (
+                <SelectItem key={item.value ?? ""} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -195,19 +241,26 @@ function LessonForm({
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="status">وضعیت</Label>
-          <select
-            id="status"
-            className={selectClass}
+          <Label>وضعیت</Label>
+          <Select
+            items={statusItems}
             value={status}
-            onChange={(e) => setStatus(e.target.value as LessonStatus)}
+            onValueChange={(value) => setStatus(value as LessonStatus)}
           >
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectLabel>وضعیت</SelectLabel>
+                {statusItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

@@ -43,7 +43,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <TooltipProvider>
         <ThemeProvider>
           {children}
-          <Toaster position="top-center" richColors />
+          <Toaster position="top-left" richColors />
           <ServiceWorker />
         </ThemeProvider>
       </TooltipProvider>

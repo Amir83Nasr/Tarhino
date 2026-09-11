@@ -14,6 +14,7 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { toast } from "@workspace/ui/components/sonner"
 
+import { ApiError } from "@/lib/api/client"
 import { checkPhone, login, register } from "@/features/auth/api"
 import { toLatinDigits } from "@/lib/date/jalali"
 import { useAuthStore } from "@/stores/auth"
@@ -44,8 +45,10 @@ export function AuthForm() {
       setStep(exists ? "login" : "register")
     },
     onError: (error) =>
+      // ApiError messages are Persian (translated in client.ts); anything else
+      // (browser/network internals) must not leak English into the toast.
       toast.error(
-        error instanceof Error ? error.message : "خطا در ارتباط با سرور"
+        error instanceof ApiError ? error.message : "خطا در ارتباط با سرور"
       ),
   })
 
@@ -68,7 +71,9 @@ export function AuthForm() {
       router.replace("/today")
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : "ورود ناموفق بود"),
+      toast.error(
+        error instanceof ApiError ? error.message : "ورود ناموفق بود"
+      ),
   })
 
   function onSubmit(event: React.FormEvent) {

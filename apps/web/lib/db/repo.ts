@@ -22,6 +22,17 @@ export type LocalTable<T extends Row> = Table<Local<T>, string>
 
 const now = () => new Date().toISOString()
 
+// crypto.randomUUID only exists in secure contexts (HTTPS/localhost); mobile
+// testing over LAN HTTP lacks it. getRandomValues works everywhere.
+const uuid = () =>
+  crypto.randomUUID?.() ??
+  "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+    (
+      +c ^
+      ((crypto.getRandomValues(new Uint8Array(1))[0] ?? 0) & (15 >> (+c / 4)))
+    ).toString(16)
+  )
+
 /** Server fields only; sync bookkeeping must not go back over the wire. */
 function wire(row: object): Record<string, unknown> {
   return Object.fromEntries(
@@ -75,7 +86,7 @@ export async function createLocal<T extends Row>(
   const timestamp = now()
   const row = {
     ...data,
-    id: crypto.randomUUID(),
+    id: uuid(),
     created_at: timestamp,
     updated_at: timestamp,
     deleted_at: null,

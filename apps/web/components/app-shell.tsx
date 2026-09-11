@@ -22,34 +22,10 @@ const NAV = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { status } = useCurrentUser()
   const router = useRouter()
-  const pathname = usePathname()
-  const pageTitle =
-    NAV.find(({ href }) => pathname.startsWith(href))?.label ?? "Tarhino"
 
   useEffect(() => {
     if (status === "anonymous") router.replace("/login")
   }, [status, router])
-
-  if (status !== "authenticated") {
-    return (
-      <div className="flex min-h-svh flex-col">
-        <div className="border-b px-4">
-          <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between">
-            <Skeleton className="h-6 w-24" />
-            <Skeleton className="h-6 w-32" />
-            <Skeleton className="size-8 rounded-full" />
-          </div>
-        </div>
-        <main className="flex-1 px-4 pt-4 pb-24 md:pb-8">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
-        </main>
-      </div>
-    )
-  }
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -59,14 +35,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             href="/today"
             className="flex shrink-0 items-center gap-2 rounded-md md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:outline-none"
           >
-            <Image src="/logo.svg" alt="" width={26} height={26} priority />
-            <span className="hidden font-heading text-base font-semibold md:inline">
-              طرحینو
-            </span>
+            <Image
+              src="/logo.svg"
+              alt="طرحینو"
+              width={26}
+              height={26}
+              priority
+            />
+            <span className="text-base font-bold">طرحینو</span>
           </Link>
-          <span className="font-heading text-sm font-medium md:hidden">
-            {pageTitle}
-          </span>
           <nav
             className="absolute inset-x-0 hidden items-center justify-center md:flex"
             aria-label="ناوبری اصلی"
@@ -74,12 +51,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <HeaderNav />
           </nav>
           <div className="flex shrink-0 items-center gap-1.5">
-            <SyncBadge />
             <ThemeToggle />
           </div>
         </div>
       </header>
-      <main className="flex-1 px-4 pb-24 md:pb-8">{children}</main>
+      <main className="flex-1 px-4 pt-4 pb-24 md:pb-8">
+        {/* Header and nav are static, so only the page body waits on the session. */}
+        {status === "authenticated" ? (
+          children
+        ) : (
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <Skeleton className="h-7 w-32" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        )}
+      </main>
+      <SyncBadge />
       <div className="md:hidden">
         <BottomNav />
       </div>

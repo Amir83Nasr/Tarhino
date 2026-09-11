@@ -25,9 +25,9 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata = {
-  title: "Tarhino",
+  title: "طرحینو",
   description: "برنامه‌ریزی ساده، تدریس بهتر",
-  applicationName: "Tarhino",
+  applicationName: "طرحینو",
 }
 
 // Chrome toolbar takes --primary: light oklch(0.514 0.222 16.935), dark oklch(0.455 0.188 13.697).

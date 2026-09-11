@@ -45,7 +45,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-4 md:gap-6 lg:grid-cols-2">
-      <h1 className="font-heading text-lg lg:col-span-full">تنظیمات</h1>
+      <h1 className="text-lg lg:col-span-full">تنظیمات</h1>
 
       <ConflictsSection />
       <ClassesSection />
@@ -62,7 +62,7 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground" dir="ltr">
-          {user?.phone}
+          {user?.phone.replace(/^(?!0)/, "0")}
         </CardContent>
       </Card>
 

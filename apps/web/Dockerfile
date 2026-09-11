@@ -64,4 +64,6 @@ COPY --from=build --chown=nextjs:nodejs /app/packages/ui/package.json ./packages
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
-CMD ["pnpm", "start"]
+# Call next directly: `pnpm start` in the runner re-resolves the workspace and
+# corepack tries to fetch a pnpm version that has no lockfile here.
+CMD ["node_modules/.bin/next", "start"]

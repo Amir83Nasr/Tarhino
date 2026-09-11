@@ -44,13 +44,14 @@ def build_crud_router[M: UserScoped](
     scoped CRUD (calendar projection, sync) gets its own module.
     """
     router = APIRouter(prefix=prefix, tags=[tag])
-    out_config = {"response_model": out_schema}
+    item_config = {"response_model": out_schema}
+    list_config = {"response_model": list[out_schema]}
 
     def read_filter(user: CurrentUser) -> ColumnElement[bool]:
         base = model.user_id == user.id
         return base if extra_where is None else base | extra_where(user.id)
 
-    @router.get("", **out_config)
+    @router.get("", **list_config)
     async def list_items(
         user: CurrentUser,
         session: Session,
@@ -79,7 +80,7 @@ def build_crud_router[M: UserScoped](
                 stmt = stmt.where(date_column <= date_to)
         return list(await session.scalars(stmt))
 
-    @router.post("", status_code=status.HTTP_201_CREATED, **out_config)
+    @router.post("", status_code=status.HTTP_201_CREATED, **item_config)
     async def create_item(
         payload: create_schema,  # type: ignore[valid-type]
         user: CurrentUser,
@@ -105,7 +106,7 @@ def build_crud_router[M: UserScoped](
         await session.refresh(row)
         return row
 
-    @router.patch("/{item_id}", **out_config)
+    @router.patch("/{item_id}", **item_config)
     async def update_item(
         item_id: uuid.UUID,
         payload: update_schema,  # type: ignore[valid-type]

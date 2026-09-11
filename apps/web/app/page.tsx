@@ -14,7 +14,7 @@ export default function Page() {
 
   return (
     <div className="flex min-h-svh items-center justify-center bg-background">
-      <Image src="/logo.svg" alt="Tarhino" width={112} height={112} priority />
+      <Image src="/logo.svg" alt="طرحینو" width={112} height={112} priority />
     </div>
   )
 }

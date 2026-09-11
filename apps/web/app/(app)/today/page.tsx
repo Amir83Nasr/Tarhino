@@ -1,18 +1,11 @@
 "use client"
 
-import { Plus } from "lucide-react"
+import { CalendarPlus, Plus } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
-import { Skeleton } from "@workspace/ui/components/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
-
-import { LessonCard } from "@/features/teaching/lesson-card"
+import { LessonCard, LessonCardSkeleton } from "@/features/teaching/lesson-card"
 import { LessonDialog } from "@/features/teaching/lesson-dialog"
 import { useHolidays, useLessonPlans } from "@/features/teaching/hooks"
 import { formatFullDate, toISODate } from "@/lib/date/jalali"
@@ -37,21 +30,15 @@ export default function TodayPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h1 className="font-heading text-lg">امروز</h1>
+          <h1 className="text-lg">امروز</h1>
           <p className="text-sm text-muted-foreground">
             {formatFullDate(today)}
           </p>
         </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button size="icon" onClick={openNew} aria-label="افزودن درس" />
-            }
-          >
-            <Plus />
-          </TooltipTrigger>
-          <TooltipContent>افزودن درس</TooltipContent>
-        </Tooltip>
+        <Button onClick={openNew}>
+          <Plus />
+          افزودن درس
+        </Button>
       </div>
 
       {holidays?.map((holiday) => (
@@ -64,10 +51,10 @@ export default function TodayPage() {
       ))}
 
       {plans === undefined ? (
-        <div className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-        </div>
+        <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
+          <LessonCardSkeleton />
+          <LessonCardSkeleton />
+        </ul>
       ) : plans.length ? (
         <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
           {plans.map((plan) => (
@@ -82,9 +69,17 @@ export default function TodayPage() {
           ))}
         </ul>
       ) : (
-        <Card>
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            برای امروز درسی ثبت نشده.
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <CalendarPlus className="size-6" />
+            </span>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">برای امروز درسی ثبت نشده</p>
+              <p className="text-xs text-muted-foreground">
+                اولین درس امروز را اضافه کنید تا برنامه‌تان شکل بگیرد.
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}

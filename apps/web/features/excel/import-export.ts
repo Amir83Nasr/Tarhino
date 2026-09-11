@@ -5,9 +5,9 @@ import * as XLSX from "xlsx"
 import { db } from "@/db"
 import { createLocal } from "@/lib/db/repo"
 import {
+  formatNumericDate,
   fromISODate,
   parseJalali,
-  toJalali,
   toLatinDigits,
   toPersianDigits,
 } from "@/lib/date/jalali"
@@ -93,9 +93,8 @@ function buildRows(plans: LessonPlan[], lookups: Lookups): ExportRow[] {
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((plan) => {
-      const { year, month, day } = toJalali(fromISODate(plan.date))
       return {
-        تاریخ: `${toPersianDigits(year)}/${toPersianDigits(month)}/${toPersianDigits(day)}`,
+        تاریخ: formatNumericDate(fromISODate(plan.date)),
         کلاس: plan.class_id ? (className.get(plan.class_id) ?? "") : "",
         درس: plan.subject_id ? (subjectName.get(plan.subject_id) ?? "") : "",
         زنگ: plan.period_id ? (periodName.get(plan.period_id) ?? "") : "",
@@ -220,7 +219,7 @@ export async function parseImport(
 
     const date = parseJalali(cell(record["تاریخ"]))
     if (!date) {
-      fail("تاریخ خوانده نشد (نمونه: ۱۴۰۴/۰۳/۱۵)")
+      fail("تاریخ خوانده نشد (نمونه: ۱۴۰۵٫۰۵٫۱۵)")
       return
     }
 
