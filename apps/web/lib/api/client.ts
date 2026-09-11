@@ -1,5 +1,14 @@
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1"
+// NEXT_PUBLIC_API_URL may be the bare host (with or without trailing slash)
+// on deploy platforms — normalize to ".../api/v1" so requests never land on
+// //auth/... (404). Paths passed to apiFetch always start with one "/".
+const API_PREFIX = "/api/v1"
+
+const BASE_URL = (() => {
+  const raw = (
+    process.env.NEXT_PUBLIC_API_URL ?? `http://localhost:8000${API_PREFIX}`
+  ).replace(/\/+$/, "")
+  return raw.endsWith(API_PREFIX) ? raw : `${raw}${API_PREFIX}`
+})()
 
 export class ApiError extends Error {
   constructor(
