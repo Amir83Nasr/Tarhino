@@ -3,7 +3,7 @@ name = "tarhino-api"
 version = "0.0.1"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.121",
+    "fastapi[standard]>=0.121",
     "uvicorn[standard]>=0.40",
     "sqlalchemy[asyncio]>=2.0.44",
     "asyncpg>=0.31",
