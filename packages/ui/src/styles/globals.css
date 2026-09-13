@@ -72,8 +72,8 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: oklch(0.8 0 0);
+  --input: oklch(0.8 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.81 0.117 11.638);
   --chart-2: oklch(0.645 0.246 16.439);
@@ -87,7 +87,7 @@
   --sidebar-primary-foreground: oklch(0.969 0.015 12.422);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.8 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 }
 
@@ -109,8 +109,8 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 26%);
+  --input: oklch(1 0 0 / 30%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.81 0.117 11.638);
   --chart-2: oklch(0.645 0.246 16.439);
@@ -123,13 +123,23 @@
   --sidebar-primary-foreground: oklch(0.969 0.015 12.422);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 26%);
   --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  /* Smooth anchor scrolling; scroll-padding clears the fixed h-16 header. */
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 4rem;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
   /* IRANYekanX ships 400 + 700 only, so bare h1–h6 resolve to 400 and render
      thinner than CardTitle and dialog titles. Force every heading to bold. */
@@ -141,10 +151,13 @@
   h6 {
     @apply font-heading font-bold;
   }
+  ::selection {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "ss02";
-    /* Square grid backdrop — two crossed 1px lines per cell */
+    font-feature-settings: "ss02"; /* Square grid backdrop — two crossed 1px lines per cell */
     background-image:
       linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
       linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
@@ -232,6 +245,27 @@
   }
 }
 
+/* ── FADE IN ─────────────────────────────────────────── */
+@keyframes fade-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 500ms ease-out both;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}
+
 /* Print: window.print() doubles as day/week PDF export. */
 @media print {
   @page {
@@ -247,7 +281,7 @@
     --card-foreground: oklch(0.145 0 0);
     --muted: oklch(0.97 0 0);
     --muted-foreground: oklch(0.556 0 0);
-    --border: oklch(0.922 0 0);
+    --border: oklch(0.8 0 0);
   }
   body {
     background: #fff !important;

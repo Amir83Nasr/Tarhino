@@ -2,9 +2,7 @@
 
 import {
   CalendarRange,
-  Mail,
-  Phone,
-  Send,
+  GraduationCap,
   Settings,
   Sparkles,
   User,
@@ -22,6 +20,7 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 
 const NAV = [
   { href: "/week", label: "برنامه", icon: CalendarRange },
+  { href: "/grades", label: "نمره‌ها", icon: GraduationCap },
   { href: "/assistant", label: "دستیار", icon: Sparkles },
   { href: "/settings", label: "تنظیمات", icon: Settings },
   { href: "/profile", label: "پروفایل", icon: User },
@@ -79,19 +78,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 border-b bg-background/80 px-4 backdrop-blur-xl supports-backdrop-filter:bg-background/55 print:hidden">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3">
           <Link
             href="/week"
-            className="flex shrink-0 items-center gap-2 rounded-md md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:outline-none"
+            className="flex shrink-0 items-center gap-2 rounded-md text-lg font-bold md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:outline-none"
           >
-            <Image
-              src="/square.svg"
-              alt="طرحینو"
-              width={32}
-              height={32}
-              priority
-            />
-            <span className="text-base font-bold">طرحینو</span>
+            <span className="flex size-9 items-center justify-center overflow-hidden rounded-lg">
+              <Image
+                src="/square.svg"
+                alt="طرحینو"
+                width={36}
+                height={36}
+                priority
+                className="size-9"
+              />
+            </span>
+            <span>طرحینو</span>
           </Link>
           <nav
             className="absolute inset-x-0 hidden items-center justify-center md:flex"
@@ -124,74 +126,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </main>
-      <Footer />
       <div className="sticky bottom-0 z-40 pt-2 md:hidden print:hidden">
         <BottomNav />
       </div>
     </div>
-  )
-}
-
-function Footer() {
-  const year = new Date().toLocaleDateString("fa-IR", { year: "numeric" })
-
-  return (
-    <footer className="hidden border-t bg-background md:block print:hidden">
-      <div className="mx-auto grid w-full max-w-6xl gap-x-6 gap-y-4 px-4 py-5 md:grid-cols-3">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium">ارتباط با ما</p>
-          <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
-            <li className="flex items-center gap-2">
-              <Send className="size-4 shrink-0" />
-              <span>بله:</span>
-              <a
-                href="https://ble.ir/Amir83Nasr"
-                target="_blank"
-                rel="noreferrer"
-                dir="ltr"
-                className="text-foreground underline underline-offset-4"
-              >
-                Amir83Nasr
-              </a>
-            </li>
-            <li className="flex items-center gap-2">
-              <Phone className="size-4 shrink-0" />
-              <span>تلفن:</span>
-              <a href="tel:+989306853363" className="text-foreground">
-                ۰۹۳۰۶۸۵۳۳۶۳
-              </a>
-            </li>
-            <li className="flex items-center gap-2">
-              <Mail className="size-4 shrink-0" />
-              <span>ایمیل:</span>
-              <a
-                href="mailto:amirhossein.nasrollahi.main@gmail.com"
-                dir="ltr"
-                className="text-foreground underline underline-offset-4"
-              >
-                amirhossein.nasrollahi.main@gmail.com
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium">انتقادها و پیشنهادها</p>
-          <p className="text-sm text-muted-foreground">
-            نظر شما طرحینو را بهتر می‌کند. در صفحه جدا توضیح داده‌ایم چه بنویسید
-            و از چه راهی بفرستید.
-          </p>
-          <Link
-            href="/feedback"
-            className="w-fit rounded-md text-sm text-primary underline underline-offset-4"
-          >
-            ثبت انتقاد یا پیشنهاد
-          </Link>
-        </div>
-        <p className="text-xs text-muted-foreground md:self-end md:justify-self-end">
-          © {year} طرحینو
-        </p>
-      </div>
-    </footer>
   )
 }
 
@@ -229,7 +167,7 @@ function BottomNav() {
 
   return (
     <nav className="px-4 pb-[calc(env(safe-area-inset-bottom,0)+0.75rem)] [background:linear-gradient(to_top,var(--background)_60%,transparent)]">
-      <ul className="mx-auto flex max-w-md rounded-full border bg-background/80 p-1 shadow-lg backdrop-blur-md">
+      <ul className="mx-auto flex max-w-md rounded-full bg-background/80 p-1 shadow-lg ring-1 ring-foreground/10 backdrop-blur-md">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)
           return (

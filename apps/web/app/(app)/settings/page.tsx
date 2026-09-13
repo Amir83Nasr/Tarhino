@@ -14,6 +14,7 @@ import { ExcelSection } from "@/features/excel/excel-section"
 import {
   ClassesSection,
   PeriodsSection,
+  SchoolsSection,
   SubjectsSection,
 } from "@/features/settings/settings-sections"
 
@@ -44,6 +45,7 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="base" className="grid grid-cols-1 gap-4">
+          <SchoolsSection />
           <ClassesSection />
           <SubjectsSection />
           <PeriodsSection />

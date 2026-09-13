@@ -16,6 +16,27 @@ class _ScopedOut(BaseModel):
     updated_at: dt.datetime
 
 
+# ── SCHOOLS ────────────────────────────────────────────────
+
+
+class SchoolFields(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str | None = Field(default=None, max_length=32)
+
+
+class SchoolCreate(SchoolFields):
+    pass
+
+
+class SchoolUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color: str | None = Field(default=None, max_length=32)
+
+
+class SchoolOut(SchoolFields, _ScopedOut):
+    pass
+
+
 # ── CLASSES ────────────────────────────────────────────────
 
 
@@ -23,6 +44,7 @@ class ClassFields(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     grade: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=32)
+    school_id: uuid.UUID | None = None
 
 
 class ClassCreate(ClassFields):
@@ -33,10 +55,101 @@ class ClassUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     grade: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=32)
+    school_id: uuid.UUID | None = None
 
 
 class ClassOut(ClassFields, _ScopedOut):
     pass
+
+
+# ── STUDENTS ───────────────────────────────────────────────
+
+
+class StudentFields(BaseModel):
+    class_id: uuid.UUID
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+
+
+class StudentCreate(StudentFields):
+    pass
+
+
+class StudentUpdate(BaseModel):
+    class_id: uuid.UUID | None = None
+    first_name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class StudentOut(StudentFields, _ScopedOut):
+    pass
+
+
+class StudentBulkItem(BaseModel):
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+
+
+class StudentBulkCreate(BaseModel):
+    class_id: uuid.UUID
+    items: list[StudentBulkItem] = Field(min_length=1, max_length=100)
+
+
+# ── ASSESSMENTS ────────────────────────────────────────────
+
+
+class AssessmentFields(BaseModel):
+    subject_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=100)
+    # ponytail: weight stored now, UI later. Weighted averages read this column
+    # without restructuring; API accepts it but nothing forces it yet.
+    weight: float = Field(default=1, ge=0, le=100)
+
+
+class AssessmentCreate(AssessmentFields):
+    order_index: int | None = None
+
+
+class AssessmentUpdate(BaseModel):
+    subject_id: uuid.UUID | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    weight: float | None = Field(default=None, ge=0, le=100)
+    order_index: int | None = None
+
+
+class AssessmentOut(AssessmentFields, _ScopedOut):
+    order_index: int
+
+
+# ── GRADES ─────────────────────────────────────────────────
+
+MAX_GRADE = 20
+
+
+class GradeFields(BaseModel):
+    student_id: uuid.UUID
+    assessment_id: uuid.UUID
+    value: float = Field(ge=0, le=MAX_GRADE)
+
+
+class GradeCreate(GradeFields):
+    pass
+
+
+class GradeUpdate(BaseModel):
+    student_id: uuid.UUID | None = None
+    assessment_id: uuid.UUID | None = None
+    value: float | None = Field(default=None, ge=0, le=MAX_GRADE)
+
+
+class GradeOut(GradeFields, _ScopedOut):
+    pass
+
+
+class GradeUpsert(BaseModel):
+    student_id: uuid.UUID
+    assessment_id: uuid.UUID
+    value: float = Field(ge=0, le=MAX_GRADE)
 
 
 # ── SUBJECTS ───────────────────────────────────────────────

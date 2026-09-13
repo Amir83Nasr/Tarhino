@@ -21,7 +21,7 @@ export function ThemeToggle() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="relative"
+            className="relative max-sm:size-11"
             aria-label="تغییر تم"
             onClick={() =>
               setTheme(resolvedTheme === "dark" ? "light" : "dark")

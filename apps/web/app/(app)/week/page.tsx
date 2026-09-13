@@ -3,16 +3,23 @@
 import {
   CalendarDays,
   CalendarOff,
+  CalendarRange,
   ChevronLeft,
   ChevronRight,
+  FileDown,
   Plus,
-  Printer,
 } from "lucide-react"
 import { useState } from "react"
 import dynamic from "next/dynamic"
 
 import { Button } from "@workspace/ui/components/button"
-import { Card, CardContent } from "@workspace/ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card"
+import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { useQueryClient } from "@tanstack/react-query"
@@ -64,6 +71,7 @@ export default function WeekPage() {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useLessonView()
   const [printScope, setPrintScope] = useState<"day" | "week">("week")
+  const [pdfOpen, setPdfOpen] = useState(false)
 
   function select(plan: LessonPlan) {
     setEditing(plan)
@@ -71,8 +79,7 @@ export default function WeekPage() {
   }
 
   // Browser print doubles as free PDF export. printScope locks what the
-  // preview shows before/after the dialog opens (one day or the full week),
-  // then afterprint restores the on-screen state.
+  // preview shows (one day or the full week); afterprint restores it.
   useEffect(() => {
     function restore() {
       setPrintScope("week")
@@ -81,10 +88,12 @@ export default function WeekPage() {
     return () => window.removeEventListener("afterprint", restore)
   }, [])
 
-  function printPlan(scope: "day" | "week") {
+  // Dialog closes first so its overlay never lands on paper; the timeout
+  // lets the close animation finish before the print dialog opens.
+  function printFromDialog(scope: "day" | "week") {
+    setPdfOpen(false)
     setPrintScope(scope)
-    // Let React commit the matching preview before the print dialog opens.
-    requestAnimationFrame(() => requestAnimationFrame(() => window.print()))
+    window.setTimeout(() => window.print(), 350)
   }
 
   const days = weekDays(anchor)
@@ -141,157 +150,178 @@ export default function WeekPage() {
         holidays={holidays ?? []}
         selectedIso={selectedIso}
       />
-      <h1 className="text-lg print:hidden">برنامه</h1>
-      <header className="mx-auto flex w-full max-w-lg items-center justify-between print:hidden">
-        <Button size="sm" variant="ghost" onClick={() => shiftWeek(-1)}>
-          <ChevronRight />
-          هفته قبل
-        </Button>
-        <span className="text-sm font-medium">
-          {monthName(weekStart.month)} {toPersianDigits(weekStart.year)}
-        </span>
-        <Button size="sm" variant="ghost" onClick={() => shiftWeek(1)}>
-          هفته بعد
-          <ChevronLeft />
-        </Button>
-      </header>
+      <div className="print:hidden">
+        <h1 className="text-lg">برنامه هفتگی</h1>
+      </div>
 
-      <ul className="mx-auto grid w-full max-w-md grid-cols-7 gap-1 print:hidden">
-        {days.map((day) => {
-          const active = isSameDay(day, selected)
-          const off = isSchoolWeekend(day)
-          const isToday = toISODate(day) === todayIso
-          return (
-            <li key={day.toISOString()}>
-              <button
-                type="button"
-                onClick={() => setSelected(day)}
-                aria-current={isToday ? "date" : undefined}
-                className={cn(
-                  "flex w-full flex-col items-center gap-1 rounded-lg py-2 text-xs",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted",
-                  !active && isToday && "ring-1 ring-primary ring-inset"
-                )}
-              >
-                <span>{weekdayName(day).slice(0, 1)}</span>
-                <span
-                  className={cn(
-                    "tabular-nums",
-                    !active && off && "text-destructive"
-                  )}
-                >
-                  {toPersianDigits(toJalali(day).day)}
-                </span>
-                <span
-                  aria-hidden
-                  className={cn(
-                    "size-1 rounded-full",
-                    isToday && !active && "bg-primary"
-                  )}
-                />
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+      <Card className="print:hidden">
+        <CardContent className="flex flex-col gap-3">
+          <header className="mx-auto flex w-full max-w-lg items-center justify-between">
+            <Button size="sm" variant="ghost" onClick={() => shiftWeek(-1)}>
+              <ChevronRight />
+              هفته قبل
+            </Button>
+            <span className="text-sm font-medium">
+              {monthName(weekStart.month)} {toPersianDigits(weekStart.year)}
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => shiftWeek(1)}>
+              هفته بعد
+              <ChevronLeft />
+            </Button>
+          </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
-        <h2 className="text-sm font-medium">{formatShortDate(selected)}</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewToggle mode={mode} onChange={setMode} />
+          <ul className="mx-auto grid w-full max-w-md grid-cols-7 gap-1">
+            {days.map((day) => {
+              const active = isSameDay(day, selected)
+              const off = isSchoolWeekend(day)
+              const isToday = toISODate(day) === todayIso
+              return (
+                <li key={day.toISOString()}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(day)}
+                    aria-current={isToday ? "date" : undefined}
+                    aria-label={`انتخاب روز ${formatShortDate(day)}`}
+                    className={cn(
+                      "flex w-full flex-col items-center gap-1 rounded-lg py-2 text-xs",
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted",
+                      !active && isToday && "ring-1 ring-primary ring-inset"
+                    )}
+                  >
+                    <span>{weekdayName(day).slice(0, 1)}</span>
+                    <span
+                      className={cn(
+                        "tabular-nums",
+                        !active && off && "text-destructive"
+                      )}
+                    >
+                      {toPersianDigits(toJalali(day).day)}
+                    </span>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-1 rounded-full",
+                        isToday && !active && "bg-primary"
+                      )}
+                    />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <Card className="flex-1 print:hidden">
+        <CardHeader className="flex flex-row flex-wrap items-center gap-2">
+          <CardTitle className="me-auto">
+            درس‌های {formatShortDate(selected)}
+          </CardTitle>
           <Button
             size="sm"
             variant="outline"
             onClick={goToday}
             disabled={isTodaySelected}
-            title="بازگشت به امروز"
+            title="برگشت به برنامه امروز"
           >
             <CalendarDays />
-            امروز
+            بازگشت به امروز
           </Button>
           <Button
             size="sm"
             variant="outline"
+            onClick={() => setPdfOpen(true)}
+            disabled={plans === undefined}
+            title="خروجی PDF برنامه روز یا هفته"
+          >
+            <FileDown />
+            خروجی PDF
+          </Button>
+          <Button
+            size="sm"
             onClick={() => {
               setEditing(null)
               setOpen(true)
             }}
+            title="درس جدید فقط برای همین روز ساخته می‌شود"
           >
             <Plus />
-            افزودن درس
+            افزودن درس به این روز
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => printPlan("day")}
-            disabled={plans === undefined}
-            title="خروجی PDF برنامه امروز"
-          >
-            <Printer />
-            <span className="hidden sm:inline">چاپ روز</span>
-            <span className="sm:hidden">روز</span>
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => printPlan("week")}
-            disabled={plans === undefined}
-            title="خروجی PDF برنامه هفته"
-          >
-            <Printer />
-            <span className="hidden sm:inline">چاپ هفته</span>
-            <span className="sm:hidden">هفته</span>
-          </Button>
-        </div>
-      </div>
+          <ViewToggle mode={mode} onChange={setMode} />
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {selectedHoliday && (
+            <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+              {selectedHoliday.title} — تعطیل
+            </div>
+          )}
 
-      {selectedHoliday && (
-        <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground print:hidden">
-          {selectedHoliday.title} — تعطیل
-        </div>
-      )}
-
-      <div className="contents print:hidden">
-        {plans === undefined ? (
-          mode === "table" ? (
-            <LessonTableSkeleton rows={1} />
+          {plans === undefined ? (
+            mode === "table" ? (
+              <LessonTableSkeleton rows={1} />
+            ) : (
+              <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
+                <LessonCardSkeleton />
+              </ul>
+            )
+          ) : selectedPlans.length ? (
+            mode === "table" ? (
+              <LessonTable plans={selectedPlans} onSelect={select} />
+            ) : (
+              <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
+                {selectedPlans.map((plan) => (
+                  <LessonCard
+                    key={plan.id}
+                    plan={plan}
+                    onSelect={() => select(plan)}
+                  />
+                ))}
+              </ul>
+            )
           ) : (
-            <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
-              <LessonCardSkeleton />
-            </ul>
-          )
-        ) : selectedPlans.length ? (
-          mode === "table" ? (
-            <LessonTable plans={selectedPlans} onSelect={select} />
-          ) : (
-            <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
-              {selectedPlans.map((plan) => (
-                <LessonCard
-                  key={plan.id}
-                  plan={plan}
-                  onSelect={() => select(plan)}
-                />
-              ))}
-            </ul>
-          )
-        ) : (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-foreground/10 py-10 text-center">
               <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <CalendarOff className="size-6" />
               </span>
               <div className="space-y-1">
                 <p className="text-sm font-medium">این روز خالی است</p>
                 <p className="text-xs text-muted-foreground">
-                  برای این روز درسی ثبت نشده.
+                  برای این روز درسی ثبت نشده. دکمه بالا بزن.
                 </p>
               </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ResponsiveDialog
+        open={pdfOpen}
+        onOpenChange={setPdfOpen}
+        title="خروجی PDF"
+        description="بازه خروجی را انتخاب کن؛ پیش‌نمایش چاپ باز می‌شود و از همان‌جا PDF می‌گیری."
+      >
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => printFromDialog("day")}
+          >
+            <CalendarDays />
+            خروجی PDF همین روز — {formatShortDate(selected)}
+          </Button>
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => printFromDialog("week")}
+          >
+            <CalendarRange />
+            خروجی PDF کل هفته
+          </Button>
+        </div>
+      </ResponsiveDialog>
 
       <LessonDialog
         open={open}

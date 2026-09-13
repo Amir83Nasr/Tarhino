@@ -1,4 +1,26 @@
-from app.models.teaching import Holiday, LessonPlan, Period, Subject, TeachingClass
+from app.models.teaching import (
+    Assessment,
+    Grade,
+    Holiday,
+    LessonPlan,
+    Period,
+    School,
+    Student,
+    Subject,
+    TeachingClass,
+)
 from app.models.user import RefreshToken, User
 
-__all__ = ["Holiday", "LessonPlan", "Period", "RefreshToken", "Subject", "TeachingClass", "User"]
+__all__ = [
+    "Assessment",
+    "Grade",
+    "Holiday",
+    "LessonPlan",
+    "Period",
+    "RefreshToken",
+    "School",
+    "Student",
+    "Subject",
+    "TeachingClass",
+    "User",
+]

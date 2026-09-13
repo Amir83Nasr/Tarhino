@@ -11,3 +11,7 @@ using Python 3.14 and Node 24 version.
 use RTL and IranYekanX font.
 
 for dates use this glyph font ۱۴۰۵٫۰۵٫۰۵
+
+use Shadcn Components always.
+
+do not use "lg" size for Buttons. use "default" or "xs" for button sizes.

@@ -15,10 +15,35 @@ type ServerRow = {
   updated_at: string
 }
 
+export type School = ServerRow & {
+  name: string
+  color: string | null
+}
+
 export type TeachingClass = ServerRow & {
   name: string
   grade: string | null
   color: string | null
+  school_id: string | null
+}
+
+export type Student = ServerRow & {
+  class_id: string
+  first_name: string
+  last_name: string
+}
+
+export type Assessment = ServerRow & {
+  subject_id: string
+  title: string
+  weight: number
+  order_index: number
+}
+
+export type Grade = ServerRow & {
+  student_id: string
+  assessment_id: string
+  value: number
 }
 
 export type Subject = ServerRow & {

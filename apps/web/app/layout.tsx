@@ -28,6 +28,16 @@ export const metadata = {
   title: "طرحینو",
   description: "برنامه‌ریزی ساده، تدریس بهتر",
   applicationName: "طرحینو",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "طرحینو",
+  },
+  icons: {
+    icon: [{ url: "/favicon.png", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
 }
 
 // Chrome toolbar takes --primary: light oklch(0.514 0.222 16.935), dark oklch(0.455 0.188 13.697).
@@ -51,6 +61,7 @@ export default function RootLayout({
     <html
       lang="fa"
       dir="rtl"
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={cn(
         "antialiased",

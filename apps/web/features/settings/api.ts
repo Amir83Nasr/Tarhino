@@ -3,18 +3,32 @@
 import {
   createClass,
   createPeriod,
+  createSchool,
   createSubject,
   deleteClass,
   deletePeriod,
+  deleteSchool,
   deleteSubject,
   renameClass,
+  renameSchool,
   renameSubject,
   savePeriod,
   type PeriodInput,
 } from "@/features/teaching/api"
+import { apiFetch } from "@/lib/api/client"
+import type { TeachingClass } from "@/lib/api/types"
 
 // Settings edits: direct server writes. Callers invalidate the matching list
 // query (see settings-sections.tsx) so the UI refreshes from the response.
+
+// ── SCHOOLS ────────────────────────────────────────────────
+
+export const addSchool = (name: string) => createSchool(name)
+
+export const renameSchoolAction = (id: string, name: string) =>
+  renameSchool(id, name)
+
+export const removeSchool = (id: string) => deleteSchool(id)
 
 // ── CLASSES ────────────────────────────────────────────────
 
@@ -24,6 +38,13 @@ export const renameClassAction = (id: string, name: string) =>
   renameClass(id, name)
 
 export const removeClass = (id: string) => deleteClass(id)
+
+export function saveClassSchool(id: string, schoolId: string | null) {
+  return apiFetch<TeachingClass>(`/classes/${id}`, {
+    method: "PATCH",
+    body: { school_id: schoolId },
+  })
+}
 
 // ── SUBJECTS ───────────────────────────────────────────────
 

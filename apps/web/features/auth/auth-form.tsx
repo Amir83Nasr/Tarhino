@@ -2,7 +2,9 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -33,6 +35,13 @@ export function AuthForm() {
   const router = useRouter()
   const client = useQueryClient()
   const setUser = useAuthStore((s) => s.setUser)
+  const { status } = useCurrentUser()
+
+  // Already signed in (e.g. entry button pointed at /login before the
+  // session probe settled): skip the form and go straight to the panel.
+  useEffect(() => {
+    if (status === "authenticated") router.replace("/week")
+  }, [status, router])
 
   const [step, setStep] = useState<Step>("phone")
   const [phone, setPhone] = useState("")
@@ -116,6 +125,9 @@ export function AuthForm() {
   }
 
   const pending = resolvePhone.isPending || submit.isPending
+
+  // While the bounce above resolves, hold the form (no flash of inputs).
+  if (status === "loading" || status === "authenticated") return null
 
   return (
     <form onSubmit={onSubmit}>

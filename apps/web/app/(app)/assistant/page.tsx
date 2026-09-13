@@ -1,6 +1,7 @@
 "use client"
 
 import { Plus, Send, Sparkles, User } from "lucide-react"
+import Link from "next/link"
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useAiSettings } from "@/features/assistant/assistant-settings"
 
@@ -534,8 +535,12 @@ export default function AssistantPage() {
 
 function SettingsLink() {
   return (
-    <a href="/settings" className="text-primary underline underline-offset-4">
+    <Link
+      href="/settings"
+      replace
+      className="text-primary underline underline-offset-4"
+    >
       تنظیمات
-    </a>
+    </Link>
   )
 }

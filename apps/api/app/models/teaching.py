@@ -7,8 +7,10 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Time,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -34,12 +36,35 @@ class UserScoped(Base):
     )
 
 
+class School(UserScoped):
+    __tablename__ = "schools"
+
+    name: Mapped[str] = mapped_column(String(100))
+    color: Mapped[str | None] = mapped_column(String(32), default=None)
+
+
 class TeachingClass(UserScoped):
     __tablename__ = "classes"
 
     name: Mapped[str] = mapped_column(String(100))
     grade: Mapped[str | None] = mapped_column(String(100), default=None)
     color: Mapped[str | None] = mapped_column(String(32), default=None)
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("schools.id", ondelete="SET NULL"), default=None
+    )
+
+
+class Student(UserScoped):
+    """A student belongs to a class, not to a subject."""
+
+    __tablename__ = "students"
+    __table_args__ = (Index("ix_students_user_class", "user_id", "class_id"),)
+
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("classes.id", ondelete="CASCADE"), index=True
+    )
+    first_name: Mapped[str] = mapped_column(String(100))
+    last_name: Mapped[str] = mapped_column(String(100))
 
 
 class Subject(UserScoped):
@@ -88,6 +113,38 @@ class LessonPlan(UserScoped):
     activity: Mapped[str] = mapped_column(String(2000))
     notes: Mapped[str] = mapped_column(String(2000), default="")
     status: Mapped[str] = mapped_column(String(16), default="planned")
+
+
+class Assessment(UserScoped):
+    """A grade column on a subject. weight reserved for future averages."""
+
+    __tablename__ = "assessments"
+    __table_args__ = (Index("ix_assessments_user_subject", "user_id", "subject_id"),)
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("subjects.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(100))
+    weight: Mapped[float] = mapped_column(Numeric(6, 2), default=1)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Grade(UserScoped):
+    """One cell: student × assessment. Unique so a cell holds one value."""
+
+    __tablename__ = "grades"
+    __table_args__ = (
+        UniqueConstraint("user_id", "student_id", "assessment_id", name="uq_grade_cell"),
+        Index("ix_grades_user_assessment", "user_id", "assessment_id"),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), index=True
+    )
+    assessment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("assessments.id", ondelete="CASCADE"), index=True
+    )
+    value: Mapped[float] = mapped_column(Numeric(5, 2))
 
 
 class Holiday(UserScoped):

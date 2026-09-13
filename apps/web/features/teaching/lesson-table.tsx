@@ -126,7 +126,7 @@ export function LessonTable({
                   onSelect(plan)
                 }
               }}
-              className="cursor-pointer border-t border-border transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring"
+              className="cursor-pointer border-t border-foreground/10 transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring"
             >
               <td
                 title={plan.activity}
@@ -173,7 +173,10 @@ export function LessonTableSkeleton({ rows = 3 }: { rows?: number }) {
       <table className="w-full min-w-xl text-sm">
         <tbody>
           {Array.from({ length: rows }).map((_, index) => (
-            <tr key={index} className="border-t border-border first:border-t-0">
+            <tr
+              key={index}
+              className="border-t border-foreground/10 first:border-t-0"
+            >
               <td className="px-3 py-2">
                 <Skeleton className="h-4 w-3/4" />
               </td>

@@ -12,6 +12,15 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
 import {
@@ -23,15 +32,20 @@ import {
 import {
   addClass,
   addPeriod,
+  addSchool,
   addSubject,
   removeClass,
   removePeriod,
+  removeSchool,
   removeSubject,
   renameClassAction,
+  renameSchoolAction,
   renameSubjectAction,
+  saveClassSchool,
   savePeriodAction,
 } from "@/features/settings/api"
 import { TimeInput } from "@/components/time-input"
+import { useSchools } from "@/features/settings/school-options"
 import { useClasses, usePeriods, useSubjects } from "@/features/teaching/hooks"
 import { ApiError } from "@/lib/api/client"
 import type { Period } from "@/lib/api/types"
@@ -47,6 +61,13 @@ type NamedMutations = {
     typeof useMutation<unknown, unknown, { id: string; name: string }>
   >
   remove: ReturnType<typeof useMutation<unknown, unknown, string>>
+  assignSchool?: ReturnType<
+    typeof useMutation<
+      unknown,
+      unknown,
+      { id: string; schoolId: string | null }
+    >
+  >
 }
 
 function DeleteButton({
@@ -86,7 +107,7 @@ function fail(error: unknown) {
 
 function EmptyHint({ text }: { text: string }) {
   return (
-    <p className="rounded-lg border border-dashed py-3 text-center text-xs text-muted-foreground">
+    <p className="rounded-lg border border-dashed border-foreground/10 py-3 text-center text-xs text-muted-foreground">
       {text}
     </p>
   )
@@ -100,12 +121,18 @@ function NamedSection<T extends { id: string; name: string }>({
   empty,
   items,
   mutations,
+  schools,
+  schoolOf,
+  onSchool,
 }: {
   title: string
   placeholder: string
   empty: string
   items: T[] | undefined
   mutations: NamedMutations
+  schools?: { id: string; name: string }[]
+  schoolOf?: (id: string) => string | null
+  onSchool?: (id: string, schoolId: string | null) => void
 }) {
   const [draft, setDraft] = useState("")
   const pending = mutations.create.isPending
@@ -147,6 +174,37 @@ function NamedSection<T extends { id: string; name: string }>({
                   else e.target.value = item.name
                 }}
               />
+              {schools && schoolOf && onSchool && (
+                <Select
+                  items={[
+                    { label: "بی‌مدرسه", value: null as string | null },
+                    ...schools.map((s) => ({
+                      label: s.name,
+                      value: s.id as string | null,
+                    })),
+                  ]}
+                  value={schoolOf(item.id) ?? null}
+                  onValueChange={(v) => onSchool(item.id, v ?? null)}
+                >
+                  <SelectTrigger
+                    aria-label="مدرسه کلاس"
+                    className="max-w-32 shrink-0"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      <SelectLabel>مدرسه</SelectLabel>
+                      <SelectItem value={null}>بی‌مدرسه</SelectItem>
+                      {schools.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
               <DeleteButton
                 disabled={mutations.remove.isPending}
                 onClick={() =>
@@ -180,10 +238,13 @@ type NamedItem = { id: string; name: string }
 
 // The server returns the saved row; onSuccess swaps it in so create/rename
 // need no refetch. Deletes return 204 and are already removed from cache.
-function useNamedMutations(kind: "classes" | "subjects"): NamedMutations {
+function useNamedMutations(
+  kind: "classes" | "subjects" | "schools"
+): NamedMutations {
   const client = useQueryClient()
   const key = [kind]
   const isClass = kind === "classes"
+  const isSchool = kind === "schools"
 
   async function snapshot() {
     await client.cancelQueries({ queryKey: key })
@@ -191,7 +252,8 @@ function useNamedMutations(kind: "classes" | "subjects"): NamedMutations {
   }
 
   const create = useMutation({
-    mutationFn: (name: string) => (isClass ? addClass(name) : addSubject(name)),
+    mutationFn: (name: string) =>
+      isClass ? addClass(name) : isSchool ? addSchool(name) : addSubject(name),
     onMutate: async (name) => {
       const previous = await snapshot()
       const now = new Date().toISOString()
@@ -212,7 +274,11 @@ function useNamedMutations(kind: "classes" | "subjects"): NamedMutations {
   })
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
-      isClass ? renameClassAction(id, name) : renameSubjectAction(id, name),
+      isClass
+        ? renameClassAction(id, name)
+        : isSchool
+          ? renameSchoolAction(id, name)
+          : renameSubjectAction(id, name),
     onMutate: async ({ id, name }) => {
       const previous = await snapshot()
       client.setQueryData<NamedItem[]>(key, (old) =>
@@ -232,7 +298,12 @@ function useNamedMutations(kind: "classes" | "subjects"): NamedMutations {
       client.setQueryData(key, context.previous),
   })
   const remove = useMutation({
-    mutationFn: (id: string) => (isClass ? removeClass(id) : removeSubject(id)),
+    mutationFn: (id: string) =>
+      isClass
+        ? removeClass(id)
+        : isSchool
+          ? removeSchool(id)
+          : removeSubject(id),
     onMutate: async (id) => {
       const previous = await snapshot()
       client.setQueryData<NamedItem[]>(key, (old) =>
@@ -244,12 +315,53 @@ function useNamedMutations(kind: "classes" | "subjects"): NamedMutations {
       context?.previous !== undefined &&
       client.setQueryData(key, context.previous),
   })
-  return { create, rename, remove }
+  const assignSchool = useMutation({
+    mutationFn: ({ id, schoolId }: { id: string; schoolId: string | null }) =>
+      saveClassSchool(id, schoolId),
+    onMutate: async ({ id, schoolId }) => {
+      await client.cancelQueries({ queryKey: ["classes"] })
+      const previous = client.getQueryData<
+        { id: string; school_id: string | null }[]
+      >(["classes"])
+      client.setQueryData<{ id: string; school_id: string | null }[]>(
+        ["classes"],
+        (old) =>
+          old?.map((c) => (c.id === id ? { ...c, school_id: schoolId } : c))
+      )
+      return { previous }
+    },
+    onSuccess: (saved) => {
+      client.setQueryData(["classes"], (old: { id: string }[] | undefined) =>
+        old?.map((c) => (c.id === (saved as { id: string }).id ? saved : c))
+      )
+    },
+    onError: (_e, _v, context) => {
+      const ctx = context as { previous?: unknown } | undefined
+      if (ctx?.previous !== undefined)
+        client.setQueryData(["classes"], ctx.previous)
+    },
+  })
+  return { create, rename, remove, assignSchool }
+}
+
+export function SchoolsSection() {
+  const schools = useSchools()
+  const mutations = useNamedMutations("schools")
+  return (
+    <NamedSection
+      title="مدرسه‌ها"
+      placeholder="مثلاً دبیرستان فرزانگان"
+      empty="هنوز مدرسه‌ای اضافه نشده."
+      items={schools}
+      mutations={mutations}
+    />
+  )
 }
 
 export function ClassesSection() {
   const classes = useClasses()
   const mutations = useNamedMutations("classes")
+  const schools = useSchools()
   return (
     <NamedSection
       title="کلاس‌ها"
@@ -257,6 +369,11 @@ export function ClassesSection() {
       empty="هنوز کلاسی اضافه نشده."
       items={classes}
       mutations={mutations}
+      schoolOf={(id) => classes?.find((c) => c.id === id)?.school_id ?? null}
+      schools={(schools ?? []).map((s) => ({ id: s.id, name: s.name }))}
+      onSchool={(id, schoolId) =>
+        mutations.assignSchool?.mutate({ id, schoolId }, { onError: fail })
+      }
     />
   )
 }
