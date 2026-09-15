@@ -3,7 +3,9 @@
 import { apiFetch } from "@/lib/api/client"
 import type {
   Assessment,
+  ClassSubject,
   Grade,
+  GradeScale,
   Holiday,
   LessonPlan,
   LessonStatus,
@@ -24,6 +26,9 @@ export const listClasses = () => apiFetch<TeachingClass[]>("/classes")
 export const listSubjects = () => apiFetch<Subject[]>("/subjects")
 
 export const listPeriods = () => apiFetch<Period[]>("/periods")
+
+export const listPeriodsByClass = (classId: string) =>
+  apiFetch<Period[]>(`/periods/by-class/${classId}`)
 
 export function listLessonPlans(from: string, to: string) {
   const params = new URLSearchParams({ date_from: from, date_to: to })
@@ -125,16 +130,55 @@ export type Gradebook = {
 export const listGradebook = (subjectId: string) =>
   apiFetch<Gradebook>(`/assessments/${subjectId}/gradebook`)
 
+// Numeric mode sends value; descriptive mode sends one of the subject
+// scale's 4 labels. The server enforces which one applies.
 export function upsertGrade(
   studentId: string,
   assessmentId: string,
-  value: number
+  grade: { value: number } | { level: string }
 ) {
   return apiFetch<Grade>("/grades/upsert", {
     method: "POST",
-    body: { student_id: studentId, assessment_id: assessmentId, value },
+    body: { student_id: studentId, assessment_id: assessmentId, ...grade },
   })
 }
+
+// ── GRADE SCALES (per-subject descriptive bands) ─────────────
+
+export type GradeScaleInput = {
+  excellent_min: number
+  good_min: number
+  pass_min: number
+  excellent_label: string
+  good_label: string
+  fair_label: string
+  needs_label: string
+}
+
+export const getGradeScale = (subjectId: string) =>
+  apiFetch<GradeScale>(`/grade-scales/by-subject/${subjectId}`)
+
+export function saveGradeScale(
+  scaleId: string,
+  patch: Partial<GradeScaleInput>
+) {
+  return apiFetch<GradeScale>(`/grade-scales/${scaleId}`, {
+    method: "PATCH",
+    body: patch,
+  })
+}
+
+export function createGradeScale(subjectId: string, input: GradeScaleInput) {
+  return apiFetch<GradeScale>("/grade-scales", {
+    method: "POST",
+    body: { subject_id: subjectId, ...input },
+  })
+}
+
+export const relabelSubjectGrades = (subjectId: string) =>
+  apiFetch<number>(`/grade-scales/by-subject/${subjectId}/relabel`, {
+    method: "POST",
+  })
 
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
 const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩"
@@ -159,9 +203,9 @@ export function parseGradeValue(raw: string): number | null {
 export type LessonPlanInput = {
   date: string
   activity: string
-  class_id: string | null
-  subject_id: string | null
-  period_id: string | null
+  class_id: string
+  subject_id: string
+  period_id: string
   start_time: string | null
   end_time: string | null
   status: LessonStatus
@@ -188,10 +232,10 @@ export function deleteLessonPlan(id: string) {
 
 // ── CLASSES ────────────────────────────────────────────────
 
-export function createClass(name: string, school_id?: string | null) {
+export function createClass(name: string, school_id: string) {
   return apiFetch<TeachingClass>("/classes", {
     method: "POST",
-    body: { name, school_id: school_id ?? null },
+    body: { name, school_id },
   })
 }
 
@@ -226,9 +270,29 @@ export function deleteSubject(id: string) {
   return apiFetch<void>(`/subjects/${id}`, { method: "DELETE" })
 }
 
+// ── CLASS-SUBJECT LINKS ────────────────────────────────────
+
+export const listClassSubjectsByClass = (classId: string) =>
+  apiFetch<ClassSubject[]>(`/class-subjects/by-class/${classId}`)
+
+export const listClassSubjectsBySubject = (subjectId: string) =>
+  apiFetch<ClassSubject[]>(`/class-subjects/by-subject/${subjectId}`)
+
+export function linkClassSubject(classId: string, subjectId: string) {
+  return apiFetch<ClassSubject>("/class-subjects", {
+    method: "POST",
+    body: { class_id: classId, subject_id: subjectId },
+  })
+}
+
+export function unlinkClassSubject(id: string) {
+  return apiFetch<void>(`/class-subjects/${id}`, { method: "DELETE" })
+}
+
 // ── PERIODS ────────────────────────────────────────────────
 
 export type PeriodInput = {
+  class_id: string
   label: string
   start_time: string
   end_time: string

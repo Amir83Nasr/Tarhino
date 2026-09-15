@@ -44,14 +44,14 @@ class School(UserScoped):
 
 
 class TeachingClass(UserScoped):
+    """A class always belongs to a school (strict tree: school -> class)."""
+
     __tablename__ = "classes"
 
     name: Mapped[str] = mapped_column(String(100))
     grade: Mapped[str | None] = mapped_column(String(100), default=None)
     color: Mapped[str | None] = mapped_column(String(32), default=None)
-    school_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("schools.id", ondelete="SET NULL"), default=None
-    )
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"))
 
 
 class Student(UserScoped):
@@ -74,10 +74,35 @@ class Subject(UserScoped):
     color: Mapped[str | None] = mapped_column(String(32), default=None)
 
 
-class Period(UserScoped):
-    __tablename__ = "periods"
-    __table_args__ = (Index("ix_periods_user_order", "user_id", "order_index"),)
+class ClassSubject(UserScoped):
+    """Link: which subjects are taught to which class."""
 
+    __tablename__ = "class_subjects"
+    __table_args__ = (
+        UniqueConstraint("user_id", "class_id", "subject_id", name="uq_class_subject_cell"),
+        Index("ix_class_subjects_user_class", "user_id", "class_id"),
+    )
+
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("classes.id", ondelete="CASCADE"), index=True
+    )
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("subjects.id", ondelete="CASCADE"), index=True
+    )
+
+
+class Period(UserScoped):
+    """One class's bell. The per-teacher global schedule is gone."""
+
+    __tablename__ = "periods"
+    __table_args__ = (
+        Index("ix_periods_user_order", "user_id", "order_index"),
+        Index("ix_periods_user_class_order", "user_id", "class_id", "order_index"),
+    )
+
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("classes.id", ondelete="CASCADE"), index=True
+    )
     label: Mapped[str] = mapped_column(String(100))
     start_time: Mapped[dt.time] = mapped_column(Time)
     end_time: Mapped[dt.time] = mapped_column(Time)
@@ -85,6 +110,12 @@ class Period(UserScoped):
 
 
 class LessonPlan(UserScoped):
+    """Strict leaf of the tree: class + subject + period are all required.
+
+    Subjects stay a per-teacher catalog; the class_subjects link says which
+    subject is taught to which class. Deleting any ancestor removes the plan.
+    """
+
     __tablename__ = "lesson_plans"
     __table_args__ = (
         Index("ix_lesson_plans_user_date", "user_id", "date"),
@@ -99,15 +130,9 @@ class LessonPlan(UserScoped):
     )
 
     date: Mapped[dt.date] = mapped_column(Date)
-    class_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("classes.id", ondelete="SET NULL"), default=None
-    )
-    subject_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("subjects.id", ondelete="SET NULL"), default=None
-    )
-    period_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("periods.id", ondelete="SET NULL"), default=None
-    )
+    class_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("classes.id", ondelete="CASCADE"))
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"))
+    period_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("periods.id", ondelete="CASCADE"))
     start_time: Mapped[dt.time | None] = mapped_column(Time, default=None)
     end_time: Mapped[dt.time | None] = mapped_column(Time, default=None)
     activity: Mapped[str] = mapped_column(String(2000))
@@ -129,6 +154,24 @@ class Assessment(UserScoped):
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class SubjectGradeScale(UserScoped):
+    """Per-subject descriptive bands for a 0–20 value. One row per subject."""
+
+    __tablename__ = "grade_scales"
+    __table_args__ = (UniqueConstraint("user_id", "subject_id", name="uq_grade_scale_subject"),)
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("subjects.id", ondelete="CASCADE"), index=True
+    )
+    excellent_min: Mapped[float] = mapped_column(Numeric(5, 2), default=18)
+    good_min: Mapped[float] = mapped_column(Numeric(5, 2), default=15)
+    pass_min: Mapped[float] = mapped_column(Numeric(5, 2), default=10)
+    excellent_label: Mapped[str] = mapped_column(String(100), default="خیلی خوب")
+    good_label: Mapped[str] = mapped_column(String(100), default="خوب")
+    fair_label: Mapped[str] = mapped_column(String(100), default="قابل قبول")
+    needs_label: Mapped[str] = mapped_column(String(100), default="نیازمند تلاش بیشتر")
+
+
 class Grade(UserScoped):
     """One cell: student × assessment. Unique so a cell holds one value."""
 
@@ -145,6 +188,7 @@ class Grade(UserScoped):
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
     )
     value: Mapped[float] = mapped_column(Numeric(5, 2))
+    label: Mapped[str] = mapped_column(String(100), default="")
 
 
 class Holiday(UserScoped):

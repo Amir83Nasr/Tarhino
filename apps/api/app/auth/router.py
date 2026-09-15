@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import service
 from app.core.config import get_settings
 from app.db.session import get_session
+from app.models.user import User as UserModel
 from app.schemas.auth import (
     LoginRequest,
     PhoneCheckRequest,
@@ -14,6 +15,11 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.schemas.user import UserOut
+
+
+def _token_response(access_token: str, user: UserModel) -> TokenResponse:
+    return TokenResponse(access_token=access_token, user=UserOut.model_validate(user))
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -61,15 +67,20 @@ async def register(data: RegisterRequest, session: Session) -> UserOut:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, response: Response, session: Session) -> TokenResponse:
+async def login(
+    data: LoginRequest, request: Request, response: Response, session: Session
+) -> TokenResponse:
     user = await service.authenticate(session, data.phone, data.password)
-    access_token, raw_refresh = await service.issue_tokens(session, user)
+    access_token, raw_refresh = await service.issue_tokens(
+        session, user, request.headers.get("user-agent")
+    )
     _set_refresh_cookie(response, raw_refresh)
-    return TokenResponse(access_token=access_token, user=UserOut.model_validate(user))
+    return _token_response(access_token, user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
+    request: Request,
     response: Response,
     session: Session,
     refresh_token: RefreshCookie = None,
@@ -77,9 +88,11 @@ async def refresh(
     if not refresh_token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing refresh token")
 
-    user, access_token, raw_refresh = await service.rotate_refresh_token(session, refresh_token)
+    user, access_token, raw_refresh = await service.rotate_refresh_token(
+        session, refresh_token, request.headers.get("user-agent")
+    )
     _set_refresh_cookie(response, raw_refresh)
-    return TokenResponse(access_token=access_token, user=UserOut.model_validate(user))
+    return _token_response(access_token, user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

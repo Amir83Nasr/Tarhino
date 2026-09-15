@@ -30,6 +30,7 @@ async def register(session: AsyncSession, data: RegisterRequest) -> User:
         first_name=data.first_name,
         last_name=data.last_name,
         password_hash=hash_password(data.password),
+        grading_mode="descriptive",
     )
     session.add(user)
     try:
@@ -70,7 +71,9 @@ async def authenticate(session: AsyncSession, phone: str, password: str) -> User
 # ── TOKENS ─────────────────────────────────────────────────
 
 
-async def issue_tokens(session: AsyncSession, user: User) -> tuple[str, str]:
+async def issue_tokens(
+    session: AsyncSession, user: User, user_agent: str | None = None
+) -> tuple[str, str]:
     """Return (access_token, raw_refresh_token)."""
     settings = get_settings()
     access_token = create_access_token(str(user.id))
@@ -80,6 +83,7 @@ async def issue_tokens(session: AsyncSession, user: User) -> tuple[str, str]:
         RefreshToken(
             user_id=user.id,
             token_hash=token_hash,
+            user_agent=user_agent[:512] if user_agent else None,
             expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
         )
     )
@@ -87,7 +91,9 @@ async def issue_tokens(session: AsyncSession, user: User) -> tuple[str, str]:
     return access_token, raw
 
 
-async def rotate_refresh_token(session: AsyncSession, raw: str) -> tuple[User, str, str]:
+async def rotate_refresh_token(
+    session: AsyncSession, raw: str, user_agent: str | None = None
+) -> tuple[User, str, str]:
     """Consume a refresh token and return (user, access_token, new_raw_refresh_token)."""
     now = datetime.now(UTC)
     token = await session.scalar(
@@ -117,10 +123,12 @@ async def rotate_refresh_token(session: AsyncSession, raw: str) -> tuple[User, s
     token.revoked_at = now
     access_token = create_access_token(str(user.id))
     raw_new, hash_new = new_refresh_token()
+    kept_ua = user_agent or token.user_agent
     session.add(
         RefreshToken(
             user_id=user.id,
             token_hash=hash_new,
+            user_agent=kept_ua[:512] if kept_ua else None,
             expires_at=now + timedelta(days=get_settings().refresh_token_expire_days),
         )
     )

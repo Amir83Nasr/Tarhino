@@ -1,9 +1,7 @@
 "use client"
 
 import { Plus, Send, Sparkles, User } from "lucide-react"
-import Link from "next/link"
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useAiSettings } from "@/features/assistant/assistant-settings"
 
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -69,7 +67,7 @@ function makeBubble(role: Bubble["role"], text: string): Bubble {
 
 const SUGGESTIONS = [
   "برای کلاس‌های فردام ایده فعالیت بده",
-  "برنامه امروزم را بررسی کن و پیشنهاد بهبود بده",
+  "طرح درس امروزم را بررسی کن و پیشنهاد بهبود بده",
 ] as const
 
 const HISTORY_KEY = "tarhino:assistant-history"
@@ -255,8 +253,6 @@ function renderMarkdown(text: string): ReactNode[] {
 }
 
 export default function AssistantPage() {
-  // Shared key with the settings tab: one fetch serves both, tab-hopping free.
-  const settings = useAiSettings()
   const { classes, subjects, periods } = useLookups()
 
   // The assistant knows the program: one 14-day range covers today, tomorrow
@@ -291,7 +287,8 @@ export default function AssistantPage() {
 
   const [messages, setMessages] = useState<Bubble[]>(() => {
     try {
-      const raw = localStorage.getItem(HISTORY_KEY)
+      if (typeof window === "undefined") return []
+      const raw = window.localStorage.getItem(HISTORY_KEY)
       if (!raw) return []
       const parsed = JSON.parse(raw) as Bubble[]
       return Array.isArray(parsed) ? parsed.slice(-50) : []
@@ -311,9 +308,11 @@ export default function AssistantPage() {
   }, [messages])
 
   const system = systemPrompt({
-    classes: classes.map((c) => c.name),
+    classes: classes.map((c) => ({
+      name: c.name,
+      periods: periods.filter((p) => p.class_id === c.id).map((p) => p.label),
+    })),
     subjects: subjects.map((s) => s.name),
-    periods: periods.map((p) => p.label),
     date: formatFullDate(new Date()),
     plans: todayPlans.map((p) => p.activity),
     tomorrowDate: formatFullDate(addDays(new Date(), 1)),
@@ -329,20 +328,35 @@ export default function AssistantPage() {
   }
 
   async function ask(text: string) {
+    if (busy) return
     const next: Bubble[] = [...messages, makeBubble("user", text)]
-    setMessages(next)
+    const streaming = makeBubble("assistant", "")
+    setMessages([...next, streaming])
     setBusy(true)
     try {
-      const reply = await chat(history(next))
+      // Re-renders as each token lands. Final plan blocks parse once, at the end.
+      const reply = await chat(history(next), (full) =>
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === streaming.id ? { ...m, text: stripPlanBlocks(full) } : m
+          )
+        )
+      )
       const plans = extractPlanBlocks(reply)
-      setMessages([
-        ...next,
-        {
-          ...makeBubble("assistant", stripPlanBlocks(reply)),
-          plans,
-        },
-      ])
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === streaming.id
+            ? { ...m, text: stripPlanBlocks(reply), plans }
+            : m
+        )
+      )
     } catch (error) {
+      // A failed stream leaves an empty assistant bubble — drop it quietly.
+      setMessages((prev) =>
+        prev.filter(
+          (m) => !(m.id === streaming.id && m.role === "assistant" && !m.text)
+        )
+      )
       toast.error(error instanceof Error ? error.message : "انجام نشد")
     } finally {
       setBusy(false)
@@ -375,21 +389,13 @@ export default function AssistantPage() {
     void ask(text)
   }
 
-  const unconfigured = !settings || !settings.has_key
-
   return (
     <div className="mx-auto flex h-[calc(100dvh-10.5rem-env(safe-area-inset-bottom))] w-full max-w-3xl flex-col gap-3 md:h-[calc(100dvh-6rem)]">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-lg">دستیار</h1>
           <p className="text-sm text-muted-foreground">
-            دستیار شما؛ به برنامه امروز وصل است.
-            {unconfigured && (
-              <>
-                {" "}
-                کلید API را در <SettingsLink /> وارد کنید.
-              </>
-            )}
+            دستیار شما؛ به طرح درس امروز وصل است.
           </p>
         </div>
         <Button
@@ -425,7 +431,7 @@ export default function AssistantPage() {
                           key={suggestion}
                           size="sm"
                           variant="outline"
-                          disabled={unconfigured}
+                          disabled={busy}
                           onClick={() => void ask(suggestion)}
                         >
                           {suggestion}
@@ -486,30 +492,33 @@ export default function AssistantPage() {
                   )
                 )}
 
-                {busy && (
-                  <MessageScrollerItem messageId="typing">
-                    <Message align="start">
-                      <MessageAvatar>
-                        <Sparkles className="size-4" />
-                      </MessageAvatar>
-                      <MessageContent>
-                        <MessageHeader>دستیار</MessageHeader>
-                        <div
-                          className="flex w-fit items-center gap-1 rounded-lg bg-muted px-3 py-2.5"
-                          aria-label="در حال نوشتن"
-                        >
-                          {[0, 1, 2].map((dot) => (
-                            <span
-                              key={dot}
-                              className="size-1.5 animate-bounce rounded-full bg-muted-foreground"
-                              style={{ animationDelay: `${dot * 150}ms` }}
-                            />
-                          ))}
-                        </div>
-                      </MessageContent>
-                    </Message>
-                  </MessageScrollerItem>
-                )}
+                {busy &&
+                  !messages.some(
+                    (m) => m.role === "assistant" && m.text.trim()
+                  ) && (
+                    <MessageScrollerItem messageId="typing">
+                      <Message align="start">
+                        <MessageAvatar>
+                          <Sparkles className="size-4" />
+                        </MessageAvatar>
+                        <MessageContent>
+                          <MessageHeader>دستیار</MessageHeader>
+                          <div
+                            className="flex w-fit items-center gap-1 rounded-lg bg-muted px-3 py-2.5"
+                            aria-label="در حال نوشتن"
+                          >
+                            {[0, 1, 2].map((dot) => (
+                              <span
+                                key={dot}
+                                className="size-1.5 animate-bounce rounded-full bg-muted-foreground"
+                                style={{ animationDelay: `${dot * 150}ms` }}
+                              />
+                            ))}
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
             <MessageScrollerButton />
@@ -530,17 +539,5 @@ export default function AssistantPage() {
         </Button>
       </form>
     </div>
-  )
-}
-
-function SettingsLink() {
-  return (
-    <Link
-      href="/settings"
-      replace
-      className="text-primary underline underline-offset-4"
-    >
-      تنظیمات
-    </Link>
   )
 }

@@ -9,10 +9,12 @@ import {
   deletePeriod,
   deleteSchool,
   deleteSubject,
+  linkClassSubject,
   renameClass,
   renameSchool,
   renameSubject,
   savePeriod,
+  unlinkClassSubject,
   type PeriodInput,
 } from "@/features/teaching/api"
 import { apiFetch } from "@/lib/api/client"
@@ -32,14 +34,15 @@ export const removeSchool = (id: string) => deleteSchool(id)
 
 // ── CLASSES ────────────────────────────────────────────────
 
-export const addClass = (name: string) => createClass(name)
+export const addClass = (name: string, schoolId: string) =>
+  createClass(name, schoolId)
 
 export const renameClassAction = (id: string, name: string) =>
   renameClass(id, name)
 
 export const removeClass = (id: string) => deleteClass(id)
 
-export function saveClassSchool(id: string, schoolId: string | null) {
+export function saveClassSchool(id: string, schoolId: string) {
   return apiFetch<TeachingClass>(`/classes/${id}`, {
     method: "PATCH",
     body: { school_id: schoolId },
@@ -55,15 +58,24 @@ export const renameSubjectAction = (id: string, name: string) =>
 
 export const removeSubject = (id: string) => deleteSubject(id)
 
+// ── CLASS-SUBJECT LINKS ────────────────────────────────────
+
+export const linkSubjectAction = (classId: string, subjectId: string) =>
+  linkClassSubject(classId, subjectId)
+
+export const unlinkSubjectAction = (id: string) => unlinkClassSubject(id)
+
 // ── PERIODS ────────────────────────────────────────────────
 
 export function addPeriod(
+  classId: string,
   label: string,
   start: string,
   end: string,
   order_index: number
 ) {
   const input: PeriodInput = {
+    class_id: classId,
     label,
     start_time: start,
     end_time: end,

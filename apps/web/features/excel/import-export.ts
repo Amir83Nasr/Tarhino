@@ -97,9 +97,9 @@ function buildRows(plans: LessonPlan[], lookups: Lookups): ExportRow[] {
     .map((plan) => {
       return {
         تاریخ: formatNumericDate(fromISODate(plan.date)),
-        کلاس: plan.class_id ? (className.get(plan.class_id) ?? "") : "",
-        درس: plan.subject_id ? (subjectName.get(plan.subject_id) ?? "") : "",
-        زنگ: plan.period_id ? (periodName.get(plan.period_id) ?? "") : "",
+        کلاس: className.get(plan.class_id) ?? "",
+        درس: subjectName.get(plan.subject_id) ?? "",
+        زنگ: periodName.get(plan.period_id) ?? "",
         شروع: timeLabel(plan.start_time),
         پایان: timeLabel(plan.end_time),
         فعالیت: plan.activity,
@@ -144,13 +144,13 @@ export async function exportLessonPlans(
 
 // ── IMPORT: PARSE ──────────────────────────────────────────
 
-/** A validated row, ready to become a lesson plan. */
+/** A validated row, ready to become a lesson plan. Strict tree: class, subject and period are always present. */
 export type ImportRow = {
   row: number
   date: string
-  class_id: string | null
-  subject_id: string | null
-  period_id: string | null
+  class_id: string
+  subject_id: string
+  period_id: string
   start_time: string | null
   end_time: string | null
   activity: string
@@ -202,11 +202,14 @@ export async function parseImport(
 
   const classId = new Map(lookups.classes.map((c) => [c.name.trim(), c.id]))
   const subjectId = new Map(lookups.subjects.map((s) => [s.name.trim(), s.id]))
-  const periodByName = new Map(lookups.periods.map((p) => [p.label.trim(), p]))
+  // Bells live under a class: the same label can repeat across classes.
+  const periodByClass = new Map(
+    lookups.periods.map((p) => [`${p.class_id}|${p.label.trim()}`, p])
+  )
 
   const existing = new Set(
     (await listLessonPlans("0000-01-01", "9999-12-31")).map(
-      (plan) => `${plan.date}|${plan.period_id ?? ""}`
+      (plan) => `${plan.date}|${plan.period_id}`
     )
   )
 
@@ -233,23 +236,29 @@ export async function parseImport(
 
     const className = cell(record["کلاس"])
     const class_id = className ? (classId.get(className) ?? null) : null
-    if (className && !class_id) fail(`کلاس «${className}» پیدا نشد`)
+    if (!class_id) {
+      fail(className ? `کلاس «${className}» پیدا نشد` : "کلاس خالی است")
+      return
+    }
 
     const subjectName = cell(record["درس"])
     const subject_id = subjectName ? (subjectId.get(subjectName) ?? null) : null
-    if (subjectName && !subject_id) fail(`درس «${subjectName}» پیدا نشد`)
+    if (!subject_id) {
+      fail(subjectName ? `درس «${subjectName}» پیدا نشد` : "درس خالی است")
+      return
+    }
 
     const periodLabel = cell(record["زنگ"])
-    const period = periodLabel ? (periodByName.get(periodLabel) ?? null) : null
-    if (periodLabel && !period) fail(`زنگ «${periodLabel}» پیدا نشد`)
-
-    if (!class_id && !subject_id && !period) {
-      // Nothing to hang the plan on, but a bare activity is still a valid note.
-      issues.push({
-        row,
-        level: "warning",
-        message: "کلاس، درس و زنگ خالی است",
-      })
+    const period = periodLabel
+      ? (periodByClass.get(`${class_id}|${periodLabel}`) ?? null)
+      : null
+    if (!period) {
+      fail(
+        periodLabel
+          ? `زنگ «${periodLabel}» در این کلاس پیدا نشد`
+          : "زنگ خالی است"
+      )
+      return
     }
 
     const start_time =
@@ -271,7 +280,7 @@ export async function parseImport(
       })
     }
 
-    if (existing.has(`${date}|${period?.id ?? ""}`)) {
+    if (existing.has(`${date}|${period.id}`)) {
       issues.push({
         row,
         level: "warning",
@@ -284,7 +293,7 @@ export async function parseImport(
       date,
       class_id,
       subject_id,
-      period_id: period?.id ?? null,
+      period_id: period.id,
       start_time,
       end_time,
       activity,

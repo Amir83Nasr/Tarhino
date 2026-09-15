@@ -3,6 +3,24 @@
 # Both services read the root .env; the API never gets secrets at build time.
 
 services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tarhino
+      POSTGRES_PASSWORD: tarhino
+      POSTGRES_DB: tarhino
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18+ requires the mount at /var/lib/postgresql, not .../data.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarhino -d tarhino"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
@@ -10,8 +28,15 @@ services:
     image: tarhino-api
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Inside compose the DB hostname is `db`; local `uv run` uses localhost
+      # from .env, so this override only applies to the container.
+      DATABASE_URL: postgresql://tarhino:tarhino@db:5432/tarhino
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
 
   web:
     build:
@@ -26,3 +51,6 @@ services:
       - "3000:3000"
     depends_on:
       - api
+
+volumes:
+  pgdata:

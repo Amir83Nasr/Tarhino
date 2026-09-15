@@ -19,8 +19,8 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { useCurrentUser } from "@/hooks/use-current-user"
 
 const NAV = [
-  { href: "/week", label: "برنامه", icon: CalendarRange },
-  { href: "/grades", label: "نمره‌ها", icon: GraduationCap },
+  { href: "/week", label: "طرح درس", icon: CalendarRange },
+  { href: "/grades", label: "کارنامه", icon: GraduationCap },
   { href: "/assistant", label: "دستیار", icon: Sparkles },
   { href: "/settings", label: "تنظیمات", icon: Settings },
   { href: "/profile", label: "پروفایل", icon: User },

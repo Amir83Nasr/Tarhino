@@ -23,9 +23,11 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { GradesSection } from "@/features/grades/grades-table"
 import { StudentsSection } from "@/features/grades/students-section"
 import { useSchools } from "@/features/grades/hooks"
-import { useClasses, useSubjects } from "@/features/teaching/hooks"
-
-const SELECT_ALL = "__all__"
+import {
+  useClasses,
+  useClassSubjects,
+  useSubjects,
+} from "@/features/teaching/hooks"
 
 export default function GradesPage() {
   const schools = useSchools()
@@ -36,15 +38,21 @@ export default function GradesPage() {
   const [classId, setClassId] = useState<string>("")
   const [subjectId, setSubjectId] = useState<string>("")
 
-  const visibleClasses = (classes ?? []).filter(
-    (c) => !schoolId || schoolId === SELECT_ALL || c.school_id === schoolId
+  const visibleClasses = schoolId
+    ? (classes ?? []).filter((c) => c.school_id === schoolId)
+    : []
+  const links = useClassSubjects(classId || null)
+  const linkedIds =
+    links === undefined ? null : new Set(links.map((l) => l.subject_id))
+  const visibleSubjects = (subjects ?? []).filter(
+    (s) => linkedIds === null || linkedIds.has(s.id)
   )
   const ready = classId && subjectId
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
       <div>
-        <h1 className="text-lg">نمره‌ها</h1>
+        <h1 className="text-lg">کارنامه</h1>
         <p className="text-sm text-muted-foreground">
           سه قدم: مدرسه و کلاس و درس انتخاب کن، نمره بده.
         </p>
@@ -59,14 +67,13 @@ export default function GradesPage() {
             label="مدرسه"
             value={schoolId}
             onChange={(v) => {
-              setSchoolId(v === SELECT_ALL ? "" : v)
+              setSchoolId(v)
               setClassId("")
             }}
             placeholder="مدرسه…"
             loading={schools === undefined}
             empty="اول از تنظیمات مدرسه بسازید."
             items={(schools ?? []).map((s) => ({ id: s.id, name: s.name }))}
-            allowAll
           />
           <Picker
             label="کلاس"
@@ -74,7 +81,11 @@ export default function GradesPage() {
             onChange={setClassId}
             placeholder="کلاس…"
             loading={classes === undefined}
-            empty="اول از تنظیمات کلاس بسازید."
+            empty={
+              schoolId
+                ? "اول از تنظیمات کلاس بسازید."
+                : "اول مدرسه انتخاب کنید."
+            }
             items={visibleClasses.map((c) => ({ id: c.id, name: c.name }))}
           />
           <Picker
@@ -82,9 +93,15 @@ export default function GradesPage() {
             value={subjectId}
             onChange={setSubjectId}
             placeholder="درس…"
-            loading={subjects === undefined}
-            empty="اول از تنظیمات درس بسازید."
-            items={(subjects ?? []).map((s) => ({ id: s.id, name: s.name }))}
+            loading={
+              subjects === undefined || (classId !== "" && links === undefined)
+            }
+            empty={
+              classId
+                ? "برای این کلاس درسی لینک نشده؛ از تنظیمات لینک کنید."
+                : "اول از تنظیمات درس بسازید."
+            }
+            items={visibleSubjects.map((s) => ({ id: s.id, name: s.name }))}
           />
         </CardContent>
       </Card>
@@ -95,7 +112,9 @@ export default function GradesPage() {
             <GraduationCap className="size-6" />
           </span>
           <div className="space-y-1">
-            <p className="text-sm font-medium">کلاس و درس را انتخاب کنید</p>
+            <p className="text-sm font-medium">
+              مدرسه، کلاس و درس را انتخاب کنید
+            </p>
             <p className="text-xs text-muted-foreground">
               بعد فهرست دانش‌آموزان و جدول نمره همین‌جا می‌آید.
             </p>
@@ -126,8 +145,8 @@ function GradesSectionWithHeading({
   classId: string
 }) {
   return (
-    <section aria-label="نمره‌های درس" className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium">۳. جدول نمره</h2>
+    <section aria-label="کارنامه درس" className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium">۳. جدول کارنامه</h2>
       <GradesSection subjectId={subjectId} classId={classId} />
     </section>
   )
@@ -141,7 +160,6 @@ function Picker({
   loading,
   empty,
   items,
-  allowAll = false,
 }: {
   label: string
   value: string
@@ -150,10 +168,9 @@ function Picker({
   loading: boolean
   empty: string
   items: { id: string; name: string }[]
-  allowAll?: boolean
 }) {
   if (loading) return <Skeleton className="h-10 w-full" />
-  if (items.length === 0 && !allowAll) {
+  if (items.length === 0) {
     return (
       <div className="flex flex-col gap-1.5 text-sm">
         <span className="font-medium">{label}</span>
@@ -165,10 +182,10 @@ function Picker({
   }
   // Base UI renders the trigger label from `items`, not from <SelectItem>
   // children: without it the trigger stays on placeholder after selection.
-  const rootItems = [
-    ...(allowAll ? [{ label: "همه", value: SELECT_ALL }] : []),
-    ...items.map((item) => ({ label: item.name, value: item.id })),
-  ]
+  const rootItems = items.map((item) => ({
+    label: item.name,
+    value: item.id,
+  }))
   return (
     <div className="flex flex-col gap-1.5 text-sm">
       <label className="font-medium">{label}</label>
@@ -183,7 +200,6 @@ function Picker({
         <SelectContent alignItemWithTrigger={false}>
           <SelectGroup>
             <SelectLabel>{label}</SelectLabel>
-            {allowAll && <SelectItem value={SELECT_ALL}>همه</SelectItem>}
             {items.map((item) => (
               <SelectItem key={item.id} value={item.id}>
                 {item.name}

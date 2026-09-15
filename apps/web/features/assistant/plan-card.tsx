@@ -25,6 +25,7 @@ import { formatNumericDate, fromISODate, parseJalali } from "@/lib/date/jalali"
 import {
   appendPlansToCache,
   useLookups,
+  usePeriodsByClass,
   type LessonPlanInput,
 } from "@/features/teaching/hooks"
 import { useQueryClient } from "@tanstack/react-query"
@@ -113,15 +114,23 @@ function PlanBatch({
         toast.error("شرح فعالیت یکی از موارد خالی است")
         return
       }
+      if (
+        !row.values.classId ||
+        !row.values.subjectId ||
+        !row.values.periodId
+      ) {
+        toast.error("کلاس، درس و زنگ همه موارد را کامل کنید")
+        return
+      }
     }
     setBusy(true)
     try {
       const items: LessonPlanInput[] = chosen.map((row) => ({
         date: row.values.isoDate as string,
         activity: row.values.activity.trim(),
-        class_id: row.values.classId || null,
-        subject_id: row.values.subjectId || null,
-        period_id: row.values.periodId || null,
+        class_id: row.values.classId,
+        subject_id: row.values.subjectId,
+        period_id: row.values.periodId,
         start_time: row.values.startTime || null,
         end_time: row.values.endTime || null,
         status: "planned",
@@ -150,7 +159,7 @@ function PlanBatch({
       // full list refetch on either path.
       appendPlansToCache(client, result.created)
       if (result.errors.length === 0) {
-        toast.success(`${result.created.length} مورد در برنامه ثبت شد`)
+        toast.success(`${result.created.length} مورد در طرح درس ثبت شد`)
         onDone()
       } else {
         toast.error(
@@ -171,7 +180,7 @@ function PlanBatch({
   return (
     <div className="flex w-full flex-col gap-2 rounded-lg bg-muted px-3 py-2">
       <p className="text-xs font-medium">
-        {drafts.length} پیشنهاد برای ثبت در برنامه
+        {drafts.length} پیشنهاد برای ثبت در طرح درس
         {savedCount > 0 && ` — ${savedCount} ثبت شد`}
       </p>
       {!lookupsReady && (
@@ -261,22 +270,24 @@ export function PlanCard({
   const [busy, setBusy] = useState(false)
   const client = useQueryClient()
 
-  const classItems = [
-    { label: "—", value: null as string | null },
-    ...classes.map((c) => ({ label: c.name, value: c.id as string | null })),
-  ]
-  const subjectItems = [
-    { label: "—", value: null as string | null },
-    ...subjects.map((s) => ({ label: s.name, value: s.id as string | null })),
-  ]
-  const periodItems = [
-    { label: "—", value: null as string | null },
-    ...periods.map((p) => ({ label: p.label, value: p.id as string | null })),
-  ]
+  const classItems = classes.map((c) => ({ label: c.name, value: c.id }))
+  const subjectItems = subjects.map((s) => ({ label: s.name, value: s.id }))
+  const classPeriods = usePeriodsByClass(classId || null)
+  const periodItems = (classPeriods ?? []).map((p) => ({
+    label: p.label,
+    value: p.id,
+  }))
+
+  function pickClass(id: string) {
+    setClassId(id)
+    // Subjects and bells belong to the class: drop stale picks.
+    setSubjectId("")
+    setPeriodId("")
+  }
 
   function pickPeriod(id: string) {
     setPeriodId(id)
-    const chosen = periods.find((p) => p.id === id)
+    const chosen = (classPeriods ?? []).find((p) => p.id === id)
     if (chosen && !startTime && !endTime) {
       setStartTime(chosen.start_time.slice(0, 5))
       setEndTime(chosen.end_time.slice(0, 5))
@@ -293,6 +304,10 @@ export function PlanCard({
       toast.error("شرح فعالیت را وارد کنید")
       return
     }
+    if (!classId || !subjectId || !periodId) {
+      toast.error("کلاس، درس و زنگ را انتخاب کنید")
+      return
+    }
     setBusy(true)
     try {
       const saved = await apiFetch<LessonPlan>("/lesson-plans", {
@@ -300,9 +315,9 @@ export function PlanCard({
         body: {
           date,
           activity: activity.trim(),
-          class_id: classId || null,
-          subject_id: subjectId || null,
-          period_id: periodId || null,
+          class_id: classId,
+          subject_id: subjectId,
+          period_id: periodId,
           start_time: startTime || null,
           end_time: endTime || null,
           status: "planned",
@@ -323,7 +338,7 @@ export function PlanCard({
     return (
       <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm">
         <CalendarCheck className="size-4 text-primary" />
-        در برنامه ثبت شد
+        در طرح درس ثبت شد
         {date && ` — ${formatNumericDate(fromISODate(date))}`}.
         <button
           type="button"
@@ -342,7 +357,7 @@ export function PlanCard({
       onSubmit={submit}
       className="flex w-full flex-col gap-2 rounded-lg bg-muted px-3 py-2"
     >
-      <p className="text-xs font-medium">پیشنهاد ثبت در برنامه</p>
+      <p className="text-xs font-medium">پیشنهاد ثبت در طرح درس</p>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="plan-activity">فعالیت</Label>
         <Input
@@ -357,42 +372,20 @@ export function PlanCard({
           <JalaliDatePicker value={date} onChange={setDate} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>زنگ</Label>
-          <Select
-            items={periodItems}
-            value={periodId || null}
-            onValueChange={(value) => pickPeriod(value ?? "")}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="—" />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                <SelectLabel>زنگ‌ها</SelectLabel>
-                {periodItems.map((item) => (
-                  <SelectItem key={item.value ?? ""} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
           <Label>کلاس</Label>
           <Select
             items={classItems}
             value={classId || null}
-            onValueChange={(value) => setClassId(value ?? "")}
+            onValueChange={(value) => value && pickClass(value)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="—" />
+              <SelectValue placeholder="کلاس…" />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
                 <SelectLabel>کلاس‌ها</SelectLabel>
                 {classItems.map((item) => (
-                  <SelectItem key={item.value ?? ""} value={item.value}>
+                  <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
                 ))}
@@ -408,13 +401,38 @@ export function PlanCard({
             onValueChange={(value) => setSubjectId(value ?? "")}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="—" />
+              <SelectValue placeholder="درس…" />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
                 <SelectLabel>درس‌ها</SelectLabel>
                 {subjectItems.map((item) => (
-                  <SelectItem key={item.value ?? ""} value={item.value}>
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>زنگ</Label>
+          <Select
+            items={periodItems}
+            value={periodId || null}
+            onValueChange={(value) => pickPeriod(value ?? "")}
+            disabled={!classId}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue
+                placeholder={classId ? "زنگ…" : "اول کلاس را انتخاب کنید"}
+              />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectLabel>زنگ‌ها</SelectLabel>
+                {periodItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
                 ))}
@@ -451,7 +469,7 @@ export function PlanCard({
       </div>
       <Button type="submit" size="sm" disabled={busy}>
         <CalendarCheck />
-        {busy ? "در حال ثبت…" : "ثبت در برنامه"}
+        {busy ? "در حال ثبت…" : "ثبت در طرح درس"}
       </Button>
     </form>
   )

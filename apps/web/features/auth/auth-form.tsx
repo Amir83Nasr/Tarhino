@@ -42,7 +42,6 @@ export function AuthForm() {
   useEffect(() => {
     if (status === "authenticated") router.replace("/week")
   }, [status, router])
-
   const [step, setStep] = useState<Step>("phone")
   const [phone, setPhone] = useState("")
   const [firstName, setFirstName] = useState("")
@@ -126,7 +125,7 @@ export function AuthForm() {
 
   const pending = resolvePhone.isPending || submit.isPending
 
-  // While the bounce above resolves, hold the form (no flash of inputs).
+  // While the session probe resolves, hold the form (no flash of inputs).
   if (status === "loading" || status === "authenticated") return null
 
   return (

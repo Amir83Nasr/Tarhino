@@ -20,8 +20,17 @@ RUN uv sync --frozen --no-dev --project apps/api --no-install-project
 
 # ── RUN ──────────────────────────────────────────────────────
 FROM base AS runner
+# WeasyPrint (PDF reports) system libs per https://doc.courtbouillon.org/weasyprint/stable/first_steps.html
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
+    libpangocairo-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 \
+    libffi8 shared-mime-info \
+ && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 1001 appgroup \
- && useradd --system --uid 1001 --gid appgroup appuser
+ && useradd --system --uid 1001 --gid appgroup --create-home appuser \
+ && mkdir -p /home/appuser/.cache/fontconfig \
+ && chown -R appuser:appgroup /home/appuser
+ENV HOME=/home/appuser
 WORKDIR /app/apps/api
 COPY --from=deps /app/apps/api/.venv ./.venv
 COPY apps/api/app ./app

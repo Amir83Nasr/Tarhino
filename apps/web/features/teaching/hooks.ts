@@ -11,15 +11,18 @@ import {
 import {
   createLessonPlan,
   deleteLessonPlan,
+  getGradeScale,
   listClasses,
+  listClassSubjectsByClass,
   listHolidays,
   listLessonPlans,
   listPeriods,
+  listPeriodsByClass,
   listSubjects,
   updateLessonPlan,
   type LessonPlanInput,
 } from "@/features/teaching/api"
-import type { LessonPlan } from "@/lib/api/types"
+import type { GradeScale, LessonPlan } from "@/lib/api/types"
 
 export type { LessonPlanInput }
 
@@ -90,6 +93,37 @@ export function usePeriods() {
     ...LOOKUP_CACHE,
   }).data
 }
+
+/** Bells of one class. Server is the filter; settings edits target this key. */
+export function usePeriodsByClass(classId: string | null) {
+  return useQuery({
+    queryKey: ["periods", classId],
+    queryFn: () => listPeriodsByClass(classId as string),
+    enabled: !!classId,
+    ...LOOKUP_CACHE,
+  }).data
+}
+
+export function useClassSubjects(classId: string | null) {
+  return useQuery({
+    queryKey: ["class-subjects", classId],
+    queryFn: () => listClassSubjectsByClass(classId as string),
+    enabled: !!classId,
+    ...LOOKUP_CACHE,
+  }).data
+}
+
+/** Per-subject descriptive bands for grades; settings owns the mutations. */
+export function useGradeScale(subjectId: string | null) {
+  return useQuery({
+    queryKey: ["grade-scale", subjectId],
+    queryFn: () => getGradeScale(subjectId as string),
+    enabled: !!subjectId,
+    ...LOOKUP_CACHE,
+  }).data
+}
+
+export type { GradeScale }
 
 /** Name lookups shared by the day and week views. */
 export function useLookups() {

@@ -28,8 +28,8 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle"
 
 const BULLETS = [
-  "برنامه هفتگی در یک نگاه",
-  "نمره‌ها همیشه همراهت",
+  "طرح درس در یک نگاه",
+  "کارنامه همیشه همراهت",
   "بدون نصب، روی گوشی و دسکتاپ",
 ] as const
 
@@ -57,12 +57,12 @@ const STEPS = [
 const FEATURES = [
   {
     icon: CalendarRange,
-    title: "برنامه هفتگی",
+    title: "طرح درس",
     description: "هر زنگ کجاست، چی درس می‌دی، ساعت چند. یک نگاه کافی است.",
   },
   {
     icon: GraduationCap,
-    title: "نمره‌ها",
+    title: "کارنامه",
     description: "کلاس و درس را انتخاب کن، نمره بده، بعداً راحت پیدا کن.",
   },
   {
@@ -165,8 +165,8 @@ export default function Page() {
                     </span>
                   </h1>
                   <p className="mx-auto max-w-md text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
-                    طرحینو برنامه هفتگی، نمره‌ها و دستیارت را یک‌جا جمع می‌کند؛
-                    بدون کاغذبازی، بدون شلوغی. روی گوشی و دسکتاپ، بدون نصب.
+                    طرحینو طرح درس، کارنامه و دستیارت را یک‌جا جمع می‌کند؛ بدون
+                    کاغذبازی، بدون شلوغی. روی گوشی و دسکتاپ، بدون نصب.
                   </p>
                   <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
                     <Button
@@ -215,7 +215,7 @@ export default function Page() {
                   سه قدم تا کلاس آماده
                 </h2>
                 <p className="mt-2 text-muted-foreground">
-                  از ثبت‌نام تا چاپ برنامه، راه کوتاهی در پیش داری
+                  از ثبت‌نام تا چاپ طرح درس، راه کوتاهی در پیش داری
                 </p>
               </div>
               <div className="grid gap-5 md:grid-cols-3">
@@ -283,7 +283,8 @@ export default function Page() {
                     فردا سر کلاس، همه‌چیز آماده است
                   </h2>
                   <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-                    برنامه‌ات را بچین، نمره‌ها را نگه دار، با خیال راحت درس بده.
+                    طرح درس‌ات را بچین، کارنامه را نگه دار، با خیال راحت درس
+                    بده.
                   </p>
                   <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
                     <Button
@@ -313,7 +314,7 @@ export default function Page() {
             <div className="flex flex-col gap-3">
               <span className="text-lg font-bold">طرحینو</span>
               <p className="text-sm leading-6 text-muted-foreground">
-                برنامه هفتگی، نمره‌ها و دستیار معلم؛ یک‌جا، بدون کاغذبازی.
+                طرح درس، کارنامه و دستیار معلم؛ یک‌جا، بدون کاغذبازی.
               </p>
             </div>
             <div className="flex flex-col gap-2">

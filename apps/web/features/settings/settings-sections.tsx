@@ -29,11 +29,13 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 
+import { setGradingMode } from "@/features/auth/api"
 import {
   addClass,
   addPeriod,
   addSchool,
   addSubject,
+  linkSubjectAction,
   removeClass,
   removePeriod,
   removeSchool,
@@ -43,30 +45,45 @@ import {
   renameSubjectAction,
   saveClassSchool,
   savePeriodAction,
+  unlinkSubjectAction,
 } from "@/features/settings/api"
 import { TimeInput } from "@/components/time-input"
 import { useSchools } from "@/features/settings/school-options"
-import { useClasses, usePeriods, useSubjects } from "@/features/teaching/hooks"
+import {
+  createGradeScale,
+  getGradeScale,
+  parseGradeValue,
+  relabelSubjectGrades,
+  saveGradeScale,
+} from "@/features/teaching/api"
+import {
+  useClasses,
+  useClassSubjects,
+  useGradeScale,
+  usePeriodsByClass,
+  useSubjects,
+} from "@/features/teaching/hooks"
 import { ApiError } from "@/lib/api/client"
-import type { Period } from "@/lib/api/types"
+import { toLatinDigits, toPersianDigits } from "@/lib/date/jalali"
+import type { GradeScale, GradingMode, Period } from "@/lib/api/types"
+import { useAuthStore } from "@/stores/auth"
 
 // Optimistic writes: the list updates instantly, the server confirms in the
 // background. Rollback on error; refetch on settle to swap temp ids.
 
 // ── SHARED ─────────────────────────────────────────────────
 
+type ClassCreateVars = { name: string; schoolId: string }
 type NamedMutations = {
-  create: ReturnType<typeof useMutation<unknown, unknown, string>>
+  create: ReturnType<
+    typeof useMutation<unknown, unknown, string | ClassCreateVars>
+  >
   rename: ReturnType<
     typeof useMutation<unknown, unknown, { id: string; name: string }>
   >
   remove: ReturnType<typeof useMutation<unknown, unknown, string>>
   assignSchool?: ReturnType<
-    typeof useMutation<
-      unknown,
-      unknown,
-      { id: string; schoolId: string | null }
-    >
+    typeof useMutation<unknown, unknown, { id: string; schoolId: string }>
   >
 }
 
@@ -124,6 +141,7 @@ function NamedSection<T extends { id: string; name: string }>({
   schools,
   schoolOf,
   onSchool,
+  defaultSchoolId,
 }: {
   title: string
   placeholder: string
@@ -132,7 +150,8 @@ function NamedSection<T extends { id: string; name: string }>({
   mutations: NamedMutations
   schools?: { id: string; name: string }[]
   schoolOf?: (id: string) => string | null
-  onSchool?: (id: string, schoolId: string | null) => void
+  onSchool?: (id: string, schoolId: string) => void
+  defaultSchoolId?: string | null
 }) {
   const [draft, setDraft] = useState("")
   const pending = mutations.create.isPending
@@ -141,8 +160,22 @@ function NamedSection<T extends { id: string; name: string }>({
     event.preventDefault()
     const name = draft.trim()
     if (!name) return
+    // Classes always belong to a school: fall back to the chosen school when
+    // the teacher has exactly one, otherwise ask via the school picker.
+    if (defaultSchoolId === undefined) {
+      setDraft("")
+      mutations.create.mutate(name, { onError: fail })
+      return
+    }
+    if (!defaultSchoolId) {
+      toast.error("اول یک مدرسه انتخاب کنید")
+      return
+    }
     setDraft("")
-    mutations.create.mutate(name, { onError: fail })
+    mutations.create.mutate(
+      { name, schoolId: defaultSchoolId },
+      { onError: fail }
+    )
   }
 
   function rename(item: T, name: string) {
@@ -176,26 +209,22 @@ function NamedSection<T extends { id: string; name: string }>({
               />
               {schools && schoolOf && onSchool && (
                 <Select
-                  items={[
-                    { label: "بی‌مدرسه", value: null as string | null },
-                    ...schools.map((s) => ({
-                      label: s.name,
-                      value: s.id as string | null,
-                    })),
-                  ]}
-                  value={schoolOf(item.id) ?? null}
-                  onValueChange={(v) => onSchool(item.id, v ?? null)}
+                  items={schools.map((s) => ({
+                    label: s.name,
+                    value: s.id,
+                  }))}
+                  value={schoolOf(item.id)}
+                  onValueChange={(v) => v && onSchool(item.id, v)}
                 >
                   <SelectTrigger
                     aria-label="مدرسه کلاس"
                     className="max-w-32 shrink-0"
                   >
-                    <SelectValue />
+                    <SelectValue placeholder="مدرسه…" />
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
                       <SelectLabel>مدرسه</SelectLabel>
-                      <SelectItem value={null}>بی‌مدرسه</SelectItem>
                       {schools.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}
@@ -252,12 +281,22 @@ function useNamedMutations(
   }
 
   const create = useMutation({
-    mutationFn: (name: string) =>
-      isClass ? addClass(name) : isSchool ? addSchool(name) : addSubject(name),
-    onMutate: async (name) => {
+    mutationFn: (vars: string | ClassCreateVars) =>
+      isClass
+        ? addClass(
+            typeof vars === "string" ? vars : vars.name,
+            typeof vars === "string" ? "" : vars.schoolId
+          )
+        : isSchool
+          ? addSchool(typeof vars === "string" ? vars : vars.name)
+          : addSubject(typeof vars === "string" ? vars : vars.name),
+    onMutate: async (vars) => {
       const previous = await snapshot()
       const now = new Date().toISOString()
-      const temp: NamedItem = { id: `temp-${now}`, name }
+      const temp: NamedItem = {
+        id: `temp-${now}`,
+        name: typeof vars === "string" ? vars : vars.name,
+      }
       client.setQueryData<NamedItem[]>(key, (old) => [...(old ?? []), temp])
       return { previous, tempId: temp.id }
     },
@@ -316,14 +355,14 @@ function useNamedMutations(
       client.setQueryData(key, context.previous),
   })
   const assignSchool = useMutation({
-    mutationFn: ({ id, schoolId }: { id: string; schoolId: string | null }) =>
+    mutationFn: ({ id, schoolId }: { id: string; schoolId: string }) =>
       saveClassSchool(id, schoolId),
     onMutate: async ({ id, schoolId }) => {
       await client.cancelQueries({ queryKey: ["classes"] })
-      const previous = client.getQueryData<
-        { id: string; school_id: string | null }[]
-      >(["classes"])
-      client.setQueryData<{ id: string; school_id: string | null }[]>(
+      const previous = client.getQueryData<{ id: string; school_id: string }[]>(
+        ["classes"]
+      )
+      client.setQueryData<{ id: string; school_id: string }[]>(
         ["classes"],
         (old) =>
           old?.map((c) => (c.id === id ? { ...c, school_id: schoolId } : c))
@@ -362,19 +401,53 @@ export function ClassesSection() {
   const classes = useClasses()
   const mutations = useNamedMutations("classes")
   const schools = useSchools()
+  const [newSchoolId, setNewSchoolId] = useState<string>("")
+  // One school → new classes join it silently. Several → teacher picks once
+  // below and the picker stays for the next class.
+  const defaultSchoolId =
+    (schools ?? []).length === 1 ? (schools?.[0]?.id ?? "") : newSchoolId
   return (
-    <NamedSection
-      title="کلاس‌ها"
-      placeholder="مثلاً هفتم الف"
-      empty="هنوز کلاسی اضافه نشده."
-      items={classes}
-      mutations={mutations}
-      schoolOf={(id) => classes?.find((c) => c.id === id)?.school_id ?? null}
-      schools={(schools ?? []).map((s) => ({ id: s.id, name: s.name }))}
-      onSchool={(id, schoolId) =>
-        mutations.assignSchool?.mutate({ id, schoolId }, { onError: fail })
-      }
-    />
+    <>
+      {(schools ?? []).length > 1 && (
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            مدرسه کلاس جدید:
+          </span>
+          <Select
+            items={(schools ?? []).map((s) => ({ label: s.name, value: s.id }))}
+            value={newSchoolId || null}
+            onValueChange={(v) => setNewSchoolId(v ?? "")}
+          >
+            <SelectTrigger className="max-w-48" aria-label="مدرسه کلاس جدید">
+              <SelectValue placeholder="انتخاب مدرسه…" />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectLabel>مدرسه</SelectLabel>
+                {(schools ?? []).map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <NamedSection
+        title="کلاس‌ها"
+        placeholder="مثلاً هفتم الف"
+        empty="هنوز کلاسی اضافه نشده."
+        items={classes}
+        mutations={mutations}
+        schoolOf={(id) => classes?.find((c) => c.id === id)?.school_id ?? null}
+        schools={(schools ?? []).map((s) => ({ id: s.id, name: s.name }))}
+        defaultSchoolId={defaultSchoolId}
+        onSchool={(id, schoolId) =>
+          mutations.assignSchool?.mutate({ id, schoolId }, { onError: fail })
+        }
+      />
+    </>
   )
 }
 
@@ -392,6 +465,388 @@ export function SubjectsSection() {
   )
 }
 
+// ── GRADING MODE (whole-teacher numeric vs descriptive) ────
+// One key for all subjects together. Numeric = 0–20 input, descriptive =
+// pick one of the subject scale's 4 levels (no numbers). Old grades convert
+// with the switch, then every gradebook refetches.
+
+export function GradingModeSection() {
+  const user = useAuthStore((s) => s.user)
+  const setUser = useAuthStore((s) => s.setUser)
+  const client = useQueryClient()
+  const [saving, setSaving] = useState(false)
+  const mode: GradingMode = user?.grading_mode ?? "descriptive"
+
+  async function switchMode(next: GradingMode) {
+    if (next === mode) return
+    setSaving(true)
+    try {
+      const { user: saved, converted } = await setGradingMode(next)
+      setUser(saved)
+      client.setQueryData(["me"], saved)
+      await client.invalidateQueries({ queryKey: ["gradebook"] })
+      toast.success(
+        converted > 0
+          ? `متن ${toPersianDigits(converted)} نمره به‌روز شد`
+          : "نوع نمره‌دهی تغییر کرد"
+      )
+    } catch (error) {
+      fail(error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>نوع نمره‌دهی</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <Select
+          items={[
+            { label: "عددی (۰ تا ۲۰)", value: "numeric" },
+            { label: "توصیفی (فقط سطح)", value: "descriptive" },
+          ]}
+          value={mode}
+          onValueChange={(v) =>
+            void switchMode((v ?? "descriptive") as GradingMode)
+          }
+        >
+          <SelectTrigger className="w-full" aria-label="نوع نمره‌دهی">
+            <SelectValue placeholder="نوع نمره‌دهی…" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              <SelectLabel>نوع نمره‌دهی</SelectLabel>
+              <SelectItem value="numeric">عددی (۰ تا ۲۰)</SelectItem>
+              <SelectItem value="descriptive">توصیفی (فقط سطح)</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {saving
+            ? "در حال تبدیل نمره‌های قبلی…"
+            : mode === "descriptive"
+              ? "توصیفی: در جدول فقط سطح انتخاب می‌کنید؛ عددی دیده نمی‌شود."
+              : "عددی: نمره ۰ تا ۲۰ وارد می‌کنید؛ متن سطح هم زیرش دیده می‌شود."}
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── GRADE SCALE (per-subject descriptive bands) ────────────
+// One scale per subject: 3 cutoffs + 4 names. Saving a scale never rewrites
+// old grades; the relabel button does that explicitly, then refreshes grids.
+
+export function GradeScaleSection() {
+  const subjects = useSubjects()
+  const [picked, setPicked] = useState<string>("")
+  // Keep the picker on a subject that still exists after deletes.
+  const active = (subjects ?? []).some((s) => s.id === picked)
+    ? picked
+    : (subjects?.[0]?.id ?? "")
+  const scale = useGradeScale(active || null)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>سطح‌بندی نمره هر درس</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Select
+          items={(subjects ?? []).map((s) => ({ label: s.name, value: s.id }))}
+          value={active || null}
+          onValueChange={(v) => setPicked(v ?? "")}
+        >
+          <SelectTrigger className="w-full" aria-label="درس">
+            <SelectValue placeholder="درس…" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              <SelectLabel>درس‌ها</SelectLabel>
+              {(subjects ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {!active ? (
+          <EmptyHint text="اول یک درس بسازید." />
+        ) : scale === undefined ? (
+          <>
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </>
+        ) : (
+          <ScaleForm key={scale.id} scale={scale} subjectId={active} />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ScaleForm({
+  scale,
+  subjectId,
+}: {
+  scale: GradeScale
+  subjectId: string
+}) {
+  const client = useQueryClient()
+  const [excellentMin, setExcellentMin] = useState(String(scale.excellent_min))
+  const [goodMin, setGoodMin] = useState(String(scale.good_min))
+  const [passMin, setPassMin] = useState(String(scale.pass_min))
+  const [excellentLabel, setExcellentLabel] = useState(scale.excellent_label)
+  const [goodLabel, setGoodLabel] = useState(scale.good_label)
+  const [fairLabel, setFairLabel] = useState(scale.fair_label)
+  const [needsLabel, setNeedsLabel] = useState(scale.needs_label)
+  const [saving, setSaving] = useState(false)
+  const [relabeling, setRelabeling] = useState(false)
+
+  const dirty =
+    excellentMin !== String(scale.excellent_min) ||
+    goodMin !== String(scale.good_min) ||
+    passMin !== String(scale.pass_min) ||
+    excellentLabel !== scale.excellent_label ||
+    goodLabel !== scale.good_label ||
+    fairLabel !== scale.fair_label ||
+    needsLabel !== scale.needs_label
+
+  async function save() {
+    const excellent = parseGradeValue(excellentMin)
+    const good = parseGradeValue(goodMin)
+    const pass = parseGradeValue(passMin)
+    if (excellent === null || good === null || pass === null) {
+      toast.error("مرزها باید عدد بین ۰ تا ۲۰ باشند")
+      return
+    }
+    if (!(pass < good && good < excellent)) {
+      toast.error("مرزها باید صعودی باشند: قبولی < خوب < خیلی خوب")
+      return
+    }
+    const labels = [excellentLabel, goodLabel, fairLabel, needsLabel].map((l) =>
+      l.trim()
+    )
+    if (labels.some((l) => !l)) {
+      toast.error("نام هر چهار سطح لازم است")
+      return
+    }
+    const patch = {
+      excellent_min: excellent,
+      good_min: good,
+      pass_min: pass,
+      excellent_label: labels[0] as string,
+      good_label: labels[1] as string,
+      fair_label: labels[2] as string,
+      needs_label: labels[3] as string,
+    }
+    setSaving(true)
+    try {
+      // Transient default has a random id: PATCH 404s, then POST creates it.
+      // POST 409 means a row already exists: retry the PATCH on its real id.
+      const saved = await saveGradeScale(scale.id, patch).catch(
+        async (error: unknown) => {
+          if (error instanceof ApiError && error.status === 404)
+            return createGradeScale(subjectId, patch).catch(
+              async (retryError: unknown) => {
+                // Two tabs saved at once: the loser re-reads the winner's row.
+                if (
+                  retryError instanceof ApiError &&
+                  retryError.status === 409
+                ) {
+                  const fresh = await getGradeScale(subjectId)
+                  return saveGradeScale(fresh.id, patch)
+                }
+                throw retryError
+              }
+            )
+          throw error
+        }
+      )
+      client.setQueryData(["grade-scale", subjectId], saved)
+      toast.success("سطح‌بندی ذخیره شد")
+    } catch (error) {
+      fail(error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function relabel() {
+    setRelabeling(true)
+    try {
+      const count = await relabelSubjectGrades(subjectId)
+      // Stored labels changed server-side: every grid of this subject refetches.
+      await client.invalidateQueries({ queryKey: ["gradebook"] })
+      toast.success(
+        count > 0
+          ? `متن ${toPersianDigits(count)} نمره به‌روز شد`
+          : "نمره‌ای برای به‌روزرسانی نیست"
+      )
+    } catch (error) {
+      fail(error)
+    } finally {
+      setRelabeling(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">مرز خیلی خوب (از)</span>
+          <Input
+            value={excellentMin}
+            onChange={(e) => setExcellentMin(toLatinDigits(e.target.value))}
+            inputMode="decimal"
+            aria-label="مرز خیلی خوب"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">مرز خوب (از)</span>
+          <Input
+            value={goodMin}
+            onChange={(e) => setGoodMin(toLatinDigits(e.target.value))}
+            inputMode="decimal"
+            aria-label="مرز خوب"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">مرز قبولی (از)</span>
+          <Input
+            value={passMin}
+            onChange={(e) => setPassMin(toLatinDigits(e.target.value))}
+            inputMode="decimal"
+            aria-label="مرز قبولی"
+          />
+        </label>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">نام سطح اول</span>
+          <Input
+            value={excellentLabel}
+            onChange={(e) => setExcellentLabel(e.target.value)}
+            aria-label="نام سطح اول"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">نام سطح دوم</span>
+          <Input
+            value={goodLabel}
+            onChange={(e) => setGoodLabel(e.target.value)}
+            aria-label="نام سطح دوم"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">نام سطح سوم</span>
+          <Input
+            value={fairLabel}
+            onChange={(e) => setFairLabel(e.target.value)}
+            aria-label="نام سطح سوم"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-medium">نام سطح چهارم</span>
+          <Input
+            value={needsLabel}
+            onChange={(e) => setNeedsLabel(e.target.value)}
+            aria-label="نام سطح چهارم"
+          />
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        نمره‌های قبلی متن قدیمی را نگه می‌دارند؛ برای اعمال سطح جدید روی آن‌ها
+        «اعمال روی نمره‌های موجود» را بزنید.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          disabled={!dirty || saving}
+          onClick={() => void save()}
+        >
+          {saving ? "…" : "ذخیره"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={relabeling}
+          onClick={() => void relabel()}
+        >
+          {relabeling ? "…" : "اعمال روی نمره‌های موجود"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function ClassSubjectsSection() {
+  const client = useQueryClient()
+  const classes = useClasses()
+  const subjects = useSubjects()
+  const [classId, setClassId] = useState<string>("")
+  const links = useClassSubjects(classId || null)
+  const linkedIds = new Set((links ?? []).map((l) => l.subject_id))
+
+  function toggle(subjectId: string, on: boolean) {
+    const link = (links ?? []).find((l) => l.subject_id === subjectId)
+    const done = () =>
+      client.invalidateQueries({ queryKey: ["class-subjects", classId] })
+    if (on && !link) {
+      linkSubjectAction(classId, subjectId).then(done, fail)
+    } else if (!on && link) {
+      unlinkSubjectAction(link.id).then(done, fail)
+    }
+  }
+
+  if (!classes?.length || !subjects?.length) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>درس‌های هر کلاس</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <Select
+          items={(classes ?? []).map((c) => ({ label: c.name, value: c.id }))}
+          value={classId || null}
+          onValueChange={(v) => setClassId(v ?? "")}
+        >
+          <SelectTrigger className="w-full" aria-label="کلاس">
+            <SelectValue placeholder="کلاس…" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              <SelectLabel>کلاس‌ها</SelectLabel>
+              {(classes ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {classId &&
+          (subjects ?? []).map((s) => (
+            <label key={s.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={linkedIds.has(s.id)}
+                onChange={(e) => toggle(s.id, e.target.checked)}
+                className="size-4 accent-primary"
+              />
+              {s.name}
+            </label>
+          ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── PERIODS ────────────────────────────────────────────────
 
 const toInput = (time: string) => time.slice(0, 5)
@@ -404,18 +859,34 @@ type PeriodPatch = {
   order_index: number
 }
 
-function usePeriodMutations() {
+// Bells live under one class: every mutation targets ["periods", classId]
+// so the dialog's usePeriodsByClass and the global useLookups stay in sync.
+function usePeriodMutations(classId: string) {
   const client = useQueryClient()
-  const key = ["periods"] as const
+  const key = ["periods", classId] as const
 
   async function snapshot() {
     await client.cancelQueries({ queryKey: key })
     return client.getQueryData<Period[]>(key)
   }
 
+  /** Mirror an edit into the global list cache too (day/week lookups). */
+  function syncGlobal(saved: Period) {
+    client.setQueryData<Period[]>(["periods"], (old) =>
+      old?.map((p) => (p.id === saved.id ? saved : p))
+    )
+  }
+
+  function dropGlobal(id: string) {
+    client.setQueryData<Period[]>(["periods"], (old) =>
+      old?.filter((p) => p.id !== id)
+    )
+  }
+
   const save = useMutation({
     mutationFn: ({ id, label, start, end, order_index }: PeriodPatch) =>
       savePeriodAction(id, {
+        class_id: classId,
         label,
         start_time: start,
         end_time: end,
@@ -441,6 +912,7 @@ function usePeriodMutations() {
       client.setQueryData<Period[]>(key, (old) =>
         old?.map((p) => (p.id === saved.id ? saved : p))
       )
+      syncGlobal(saved)
     },
     onError: (_e, _v, context) =>
       context?.previous !== undefined &&
@@ -458,6 +930,7 @@ function usePeriodMutations() {
     }) =>
       // Optimistic temp row already appended; count live rows for the index.
       addPeriod(
+        classId,
         label,
         start,
         end,
@@ -472,6 +945,7 @@ function usePeriodMutations() {
         id: `temp-${now}`,
         created_at: now,
         updated_at: now,
+        class_id: classId,
         label,
         start_time: start,
         end_time: end,
@@ -485,6 +959,10 @@ function usePeriodMutations() {
       client.setQueryData<Period[]>(key, (old) =>
         (old ?? []).filter((p) => p.id !== context?.tempId).concat(saved)
       )
+      client.setQueryData<Period[]>(["periods"], (old) => [
+        ...(old ?? []),
+        saved,
+      ])
     },
     onError: (_e, _v, context) =>
       context?.previous !== undefined &&
@@ -500,6 +978,7 @@ function usePeriodMutations() {
       )
       return { previous }
     },
+    onSuccess: (_v, id) => dropGlobal(id),
     onError: (_e, _v, context) =>
       context?.previous !== undefined &&
       client.setQueryData(key, context.previous),
@@ -572,14 +1051,24 @@ function PeriodRow({
 }
 
 export function PeriodsSection() {
-  const periods = usePeriods()
-  const mutations = usePeriodMutations()
+  const classes = useClasses()
+  const [classId, setClassId] = useState<string>("")
+  // Keep the picker on a class that still exists after deletes.
+  const activeClassId = (classes ?? []).some((c) => c.id === classId)
+    ? classId
+    : (classes?.[0]?.id ?? "")
+  const periods = usePeriodsByClass(activeClassId || null)
+  const mutations = usePeriodMutations(activeClassId)
   const [label, setLabel] = useState("")
   const [start, setStart] = useState("")
   const [end, setEnd] = useState("")
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (!activeClassId) {
+      toast.error("اول یک کلاس بسازید")
+      return
+    }
     if (!label.trim() || !start || !end) {
       toast.error("نام و ساعت زنگ را کامل کنید")
       return
@@ -604,10 +1093,31 @@ export function PeriodsSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>زنگ‌ها</CardTitle>
+        <CardTitle>زنگ‌های هر کلاس</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {periods === undefined ? (
+        <Select
+          items={(classes ?? []).map((c) => ({ label: c.name, value: c.id }))}
+          value={activeClassId || null}
+          onValueChange={(v) => setClassId(v ?? "")}
+        >
+          <SelectTrigger className="w-full" aria-label="کلاس">
+            <SelectValue placeholder="کلاس…" />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              <SelectLabel>کلاس‌ها</SelectLabel>
+              {(classes ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {!activeClassId ? (
+          <EmptyHint text="اول یک کلاس بسازید." />
+        ) : periods === undefined ? (
           Array.from({ length: 2 }, (_, i) => (
             <Skeleton key={i} className="h-9 w-full" />
           ))

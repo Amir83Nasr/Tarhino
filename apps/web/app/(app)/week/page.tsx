@@ -33,12 +33,14 @@ const LessonDialog = dynamic(
   () => import("@/features/teaching/lesson-dialog").then((m) => m.LessonDialog),
   { ssr: false }
 )
+import { downloadSchedulePdf } from "@/features/reports/api"
 import {
   LessonTable,
   LessonTableSkeleton,
   ViewToggle,
   useLessonView,
 } from "@/features/teaching/lesson-table"
+import { toast } from "@workspace/ui/components/sonner"
 import {
   prefetchWeek,
   useHolidays,
@@ -72,6 +74,25 @@ export default function WeekPage() {
   const [mode, setMode] = useLessonView()
   const [printScope, setPrintScope] = useState<"day" | "week">("week")
   const [pdfOpen, setPdfOpen] = useState(false)
+  const [serverPdfBusy, setServerPdfBusy] = useState(false)
+
+  // Server PDF (WeasyPrint, same A4/IRANYekanX style as other reports) for the
+  // visible week. Browser print stays for single-day output.
+  async function serverWeekPdf() {
+    setServerPdfBusy(true)
+    try {
+      const days = weekDays(anchor)
+      await downloadSchedulePdf(
+        toISODate(days[0] ?? anchor),
+        toISODate(days[6] ?? anchor)
+      )
+      toast.success("فایل PDF ذخیره شد")
+    } catch {
+      toast.error("دانلود انجام نشد")
+    } finally {
+      setServerPdfBusy(false)
+    }
+  }
 
   function select(plan: LessonPlan) {
     setEditing(plan)
@@ -151,7 +172,7 @@ export default function WeekPage() {
         selectedIso={selectedIso}
       />
       <div className="print:hidden">
-        <h1 className="text-lg">برنامه هفتگی</h1>
+        <h1 className="text-lg">طرح درس</h1>
       </div>
 
       <Card className="print:hidden">
@@ -224,7 +245,7 @@ export default function WeekPage() {
             variant="outline"
             onClick={goToday}
             disabled={isTodaySelected}
-            title="برگشت به برنامه امروز"
+            title="برگشت به طرح درس امروز"
           >
             <CalendarDays />
             بازگشت به امروز
@@ -234,10 +255,20 @@ export default function WeekPage() {
             variant="outline"
             onClick={() => setPdfOpen(true)}
             disabled={plans === undefined}
-            title="خروجی PDF برنامه روز یا هفته"
+            title="خروجی PDF طرح درس روز یا هفته"
           >
             <FileDown />
             خروجی PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void serverWeekPdf()}
+            disabled={plans === undefined || serverPdfBusy}
+            title="PDF هفته از سرور — مناسب ارسال و بایگانی"
+          >
+            <FileDown />
+            PDF هفته
           </Button>
           <Button
             size="sm"
@@ -367,7 +398,7 @@ function PrintPreview({
     <section aria-hidden className="hidden print:block" dir="rtl">
       <div className="mb-3 flex items-baseline justify-between border-b-2 border-black pb-2">
         <h1 className="text-base font-bold">
-          {scope === "day" ? "برنامه روز" : "برنامه هفته"} — طرحینو
+          {scope === "day" ? "طرح درس روز" : "طرح درس هفته"} — طرحینو
         </h1>
         <p className="text-xs">{heading}</p>
       </div>

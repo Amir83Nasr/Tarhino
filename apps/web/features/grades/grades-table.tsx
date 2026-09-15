@@ -1,5 +1,6 @@
 "use client"
 
+import { FileDown } from "lucide-react"
 import { useRef, useState } from "react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -10,6 +11,15 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
 
@@ -19,10 +29,13 @@ import {
   useStudents,
   useUpsertGrade,
 } from "@/features/grades/hooks"
+import { downloadGradeSheetPdf } from "@/features/reports/api"
 import { parseGradeValue } from "@/features/teaching/api"
+import { useGradeScale } from "@/features/teaching/hooks"
 import { ApiError } from "@/lib/api/client"
 import { toPersianDigits } from "@/lib/date/jalali"
-import type { Assessment } from "@/lib/api/types"
+import type { Assessment, GradeScale } from "@/lib/api/types"
+import { useAuthStore } from "@/stores/auth"
 
 function fail(error: unknown) {
   toast.error(error instanceof ApiError ? error.message : "ذخیره نشد")
@@ -48,10 +61,36 @@ export function GradesSection({
     mutations.create.mutate(title, { onError: fail })
   }
 
+  const [pdfBusy, setPdfBusy] = useState(false)
+
+  // Same data as the grid: no extra fetch, the backend pivots gradebook rows.
+  async function downloadSheet() {
+    setPdfBusy(true)
+    try {
+      await downloadGradeSheetPdf(subjectId, classId)
+      toast.success("فایل PDF ذخیره شد")
+    } catch {
+      toast.error("دانلود انجام نشد")
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>نمره‌ها</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2">
+        <CardTitle className="me-auto">کارنامه</CardTitle>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={pdfBusy || book === undefined || !book.assessments.length}
+          onClick={() => void downloadSheet()}
+          title="کارنامه به صورت PDF"
+        >
+          <FileDown />
+          کارنامه (PDF)
+        </Button>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {book === undefined ? (
@@ -78,6 +117,8 @@ export function GradesSection({
             {mutations.create.isPending ? "…" : "افزودن ارزشیابی"}
           </Button>
         </form>
+
+        <ScaleHint subjectId={subjectId} />
 
         {book !== undefined && (
           <GradesGrid subjectId={subjectId} students={students} />
@@ -161,9 +202,26 @@ function AssessmentChips({
   )
 }
 
+// Current subject's bands, one line above the grid. Reads the same cache the
+// settings editor writes, so it updates without a refetch.
+function ScaleHint({ subjectId }: { subjectId: string }) {
+  const scale = useGradeScale(subjectId)
+  if (!scale) return null
+  const band = (label: string, min: number) =>
+    `${label} ${toPersianDigits(String(min))} به بالا`
+  return (
+    <p className="text-xs text-muted-foreground">
+      سطح‌بندی این درس: {band(scale.excellent_label, scale.excellent_min)}،{" "}
+      {band(scale.good_label, scale.good_min)}،{" "}
+      {band(scale.fair_label, scale.pass_min)}؛ کمتر از{" "}
+      {toPersianDigits(String(scale.pass_min))} {scale.needs_label}
+    </p>
+  )
+}
+
 // ── SPREADSHEET GRID ───────────────────────────────────────
-// One input per cell; Enter/Tab move within the grid via input refs.
-// Invalid values shake back to the server value, never saved.
+// Numeric mode: one number input per cell; descriptive mode: one level
+// select per cell. Enter/Tab move within the grid via refs.
 
 function GradesGrid({
   subjectId,
@@ -175,6 +233,8 @@ function GradesGrid({
   const book = useGradebook(subjectId)
   const upsert = useUpsertGrade(subjectId)
   const refs = useRef(new Map<string, HTMLInputElement>())
+  const mode = useAuthStore((s) => s.user?.grading_mode ?? "descriptive")
+  const scale = useGradeScale(subjectId)
 
   if (book === undefined) return <Skeleton className="h-32 w-full" />
   const { assessments, grades } = book
@@ -188,10 +248,12 @@ function GradesGrid({
     )
   }
 
-  const valueOf = (studentId: string, assessmentId: string) =>
+  const cellOf = (studentId: string, assessmentId: string) =>
     grades.find(
       (g) => g.student_id === studentId && g.assessment_id === assessmentId
-    )?.value
+    )
+  const valueOf = (studentId: string, assessmentId: string) =>
+    cellOf(studentId, assessmentId)?.value
 
   function cellKey(row: number, col: number) {
     return `${row}:${col}`
@@ -214,8 +276,20 @@ function GradesGrid({
     }
     const current = valueOf(studentId, assessmentId)
     if (current !== undefined && Number(current) === parsed) return true
-    upsert.mutate({ studentId, assessmentId, value: parsed }, { onError: fail })
+    upsert.mutate(
+      { studentId, assessmentId, grade: { value: parsed } },
+      { onError: fail }
+    )
     return true
+  }
+
+  function pickLevel(studentId: string, assessmentId: string, level: string) {
+    const current = cellOf(studentId, assessmentId)?.label
+    if (current === level) return
+    upsert.mutate(
+      { studentId, assessmentId, grade: { level } },
+      { onError: fail }
+    )
   }
 
   return (
@@ -249,31 +323,42 @@ function GradesGrid({
                 {student.first_name} {student.last_name}
               </th>
               {assessments.map((a, col) => {
-                const current = valueOf(student.id, a.id)
+                const cell = cellOf(student.id, a.id)
+                const current = cell?.value
+                const move = (direction: "down" | "up" | "next" | "prev") => {
+                  if (direction === "down") focusCell(row + 1, col)
+                  else if (direction === "up") focusCell(row - 1, col)
+                  else if (direction === "next") {
+                    if (col + 1 < assessments.length) focusCell(row, col + 1)
+                    else focusCell(row + 1, 0)
+                  } else {
+                    if (col > 0) focusCell(row, col - 1)
+                    else focusCell(row - 1, assessments.length - 1)
+                  }
+                }
                 return (
                   <td key={a.id} className="px-1 py-1">
-                    <GradeCell
-                      key={`${student.id}:${a.id}:${current ?? "empty"}`}
-                      initial={current}
-                      inputRef={(el) => {
-                        const k = cellKey(row, col)
-                        if (el) refs.current.set(k, el)
-                        else refs.current.delete(k)
-                      }}
-                      onCommit={(raw) => commit(student.id, a.id, raw)}
-                      onMove={(direction) => {
-                        if (direction === "down") focusCell(row + 1, col)
-                        else if (direction === "up") focusCell(row - 1, col)
-                        else if (direction === "next") {
-                          if (col + 1 < assessments.length)
-                            focusCell(row, col + 1)
-                          else focusCell(row + 1, 0)
-                        } else {
-                          if (col > 0) focusCell(row, col - 1)
-                          else focusCell(row - 1, assessments.length - 1)
-                        }
-                      }}
-                    />
+                    {mode === "descriptive" ? (
+                      <LevelCell
+                        key={`${student.id}:${a.id}:${cell?.label ?? "empty"}`}
+                        scale={scale}
+                        level={cell?.label}
+                        onPick={(label) => pickLevel(student.id, a.id, label)}
+                      />
+                    ) : (
+                      <GradeCell
+                        key={`${student.id}:${a.id}:${current ?? "empty"}:${cell?.label ?? ""}`}
+                        initial={current}
+                        label={cell?.label}
+                        inputRef={(el) => {
+                          const k = cellKey(row, col)
+                          if (el) refs.current.set(k, el)
+                          else refs.current.delete(k)
+                        }}
+                        onCommit={(raw) => commit(student.id, a.id, raw)}
+                        onMove={move}
+                      />
+                    )}
                   </td>
                 )
               })}
@@ -285,13 +370,62 @@ function GradesGrid({
   )
 }
 
+// Descriptive mode: no numbers in or out, just the subject scale's 4 levels.
+function LevelCell({
+  scale,
+  level,
+  onPick,
+}: {
+  scale: GradeScale | undefined
+  level: string | undefined
+  onPick: (label: string) => void
+}) {
+  const levels = scale
+    ? [
+        scale.excellent_label,
+        scale.good_label,
+        scale.fair_label,
+        scale.needs_label,
+      ]
+    : []
+  if (!levels.length) return <Skeleton className="mx-auto h-9 w-20" />
+  // Base UI renders the trigger label from `items`: without it the trigger
+  // stays on placeholder after selection.
+  const items = levels.map((label) => ({ label, value: label }))
+  return (
+    <Select
+      items={items}
+      value={level && levels.includes(level) ? level : null}
+      onValueChange={(v) => {
+        if (v) onPick(v)
+      }}
+    >
+      <SelectTrigger className="mx-auto w-20 text-xs" aria-label="سطح">
+        <SelectValue placeholder="—" />
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false}>
+        <SelectGroup>
+          <SelectLabel>سطح</SelectLabel>
+          {levels.map((label) => (
+            <SelectItem key={label} value={label}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+}
+
 function GradeCell({
   initial,
+  label,
   inputRef,
   onCommit,
   onMove,
 }: {
   initial: number | undefined
+  label: string | undefined
   inputRef: (el: HTMLInputElement | null) => void
   onCommit: (raw: string) => boolean
   onMove: (direction: "down" | "up" | "next" | "prev") => void
@@ -302,39 +436,46 @@ function GradeCell({
   const [bad, setBad] = useState(false)
 
   return (
-    <input
-      ref={inputRef}
-      defaultValue={display}
-      inputMode="decimal"
-      aria-label="نمره"
-      onFocus={(e) => e.target.select()}
-      onBlur={(e) => {
-        if (!onCommit(e.target.value)) {
-          e.target.value = display
-          setBad(true)
-          window.setTimeout(() => setBad(false), 600)
-        }
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault()
-          const ok = onCommit(e.currentTarget.value)
-          if (!ok) e.currentTarget.value = display
-          onMove(e.shiftKey ? "up" : "down")
-        } else if (e.key === "Tab") {
-          e.preventDefault()
-          const ok = onCommit(e.currentTarget.value)
-          if (!ok) e.currentTarget.value = display
-          onMove(e.shiftKey ? "prev" : "next")
-        } else if (e.key === "ArrowDown") {
-          e.preventDefault()
-          onMove("down")
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault()
-          onMove("up")
-        }
-      }}
-      className={`h-9 w-20 rounded-md border bg-transparent px-2 text-center tabular-nums outline-none focus-visible:border-ring ${bad ? "border-destructive" : "border-transparent hover:border-input focus-visible:border-ring"}`}
-    />
+    <span className="flex flex-col items-center gap-0.5">
+      <input
+        ref={inputRef}
+        defaultValue={display}
+        inputMode="decimal"
+        aria-label="نمره"
+        onFocus={(e) => e.target.select()}
+        onBlur={(e) => {
+          if (!onCommit(e.target.value)) {
+            e.target.value = display
+            setBad(true)
+            window.setTimeout(() => setBad(false), 600)
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            const ok = onCommit(e.currentTarget.value)
+            if (!ok) e.currentTarget.value = display
+            onMove(e.shiftKey ? "up" : "down")
+          } else if (e.key === "Tab") {
+            e.preventDefault()
+            const ok = onCommit(e.currentTarget.value)
+            if (!ok) e.currentTarget.value = display
+            onMove(e.shiftKey ? "prev" : "next")
+          } else if (e.key === "ArrowDown") {
+            e.preventDefault()
+            onMove("down")
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault()
+            onMove("up")
+          }
+        }}
+        className={`h-9 w-20 rounded-md border bg-transparent px-2 text-center tabular-nums outline-none focus-visible:border-ring ${bad ? "border-destructive" : "border-transparent hover:border-input focus-visible:border-ring"}`}
+      />
+      {label ? (
+        <span className="max-w-20 truncate text-[10px] text-muted-foreground">
+          {label}
+        </span>
+      ) : null}
+    </span>
   )
 }

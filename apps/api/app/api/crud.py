@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
@@ -117,12 +117,3 @@ def build_crud_router[M: UserScoped](
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router
-
-
-async def count_live(session: AsyncSession, model: type[UserScoped], user_id: uuid.UUID) -> int:
-    return (
-        await session.scalar(
-            select(func.count()).select_from(model).where(model.user_id == user_id)
-        )
-        or 0
-    )

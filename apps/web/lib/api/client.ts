@@ -35,6 +35,8 @@ const DETAIL_TRANSLATIONS: Record<string, string> = {
   "Refresh token no longer valid": "نشست شما پایان یافته است، دوباره وارد شوید",
   "Not found": "مورد موردنظر پیدا نشد",
   "ID already in use": "این شناسه قبلاً استفاده شده است",
+  "Invalid first_name": "نام نامعتبر است",
+  "Invalid last_name": "نام خانوادگی نامعتبر است",
 }
 
 const FIELD_TRANSLATIONS: Record<string, string> = {
@@ -190,6 +192,91 @@ async function readError(response: Response): Promise<string> {
     // fall through to the generic message
   }
   return fallbackForStatus(response.status)
+}
+
+// ── STREAM ───────────────────────────────────────────────────
+// SSE POST: resolves with the full text, calling onToken with the running
+// total as each token lands so replies render word-by-word. Same auth,
+// refresh, and Persian error handling as apiFetch.
+
+export async function apiStream(
+  path: string,
+  body: unknown,
+  onToken: (full: string) => void,
+  options: { retryOnUnauthorized?: boolean } = {}
+): Promise<string> {
+  const { retryOnUnauthorized = true } = options
+
+  const headers = new Headers()
+  headers.set("Content-Type", "application/json")
+  const token = getAccessToken()
+  if (token) headers.set("Authorization", `Bearer ${token}`)
+
+  let response: Response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new ApiError(
+        0,
+        "ارتباط با سرور برقرار نشد؛ اتصال اینترنت را بررسی کنید"
+      )
+    }
+    throw error
+  }
+
+  if (response.status === 401 && retryOnUnauthorized) {
+    if (await refreshAccessToken()) {
+      return apiStream(path, body, onToken, { retryOnUnauthorized: false })
+    }
+  }
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readError(response))
+  }
+  if (!response.body) {
+    throw new ApiError(502, "پاسخ خالی بود؛ دوباره تلاش کنید")
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let full = ""
+
+  const feed = (line: string) => {
+    const data = line.startsWith("data:") ? line.slice(5).trim() : ""
+    if (!data || data === "[DONE]") return
+    try {
+      const tokenText = JSON.parse(data) as unknown
+      if (typeof tokenText === "string" && tokenText) {
+        full += tokenText
+        onToken(full)
+      }
+    } catch {
+      // half-flushed chunk: the remainder arrives with the next read.
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split("\n")
+    buffer = lines.pop() ?? ""
+    for (const line of lines) feed(line)
+  }
+  buffer += decoder.decode()
+  if (buffer.trim()) feed(buffer)
+
+  if (!full.trim()) {
+    throw new ApiError(502, "پاسخ خالی بود؛ دوباره تلاش کنید")
+  }
+  return full
 }
 
 let refreshInFlight: Promise<boolean> | null = null

@@ -46,7 +46,7 @@ export default function GlobalError({
           </p>
           <h1 style={{ margin: "12px 0 0", fontSize: 18 }}>مشکلی پیش آمد</h1>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "#555" }}>
-            برنامه باز نشد. یک بار دیگر تلاش کنید.
+            طرحینو باز نشد. یک بار دیگر تلاش کنید.
           </p>
           <div
             style={{
@@ -84,7 +84,7 @@ export default function GlobalError({
                 textDecoration: "none",
               }}
             >
-              بازگشت به برنامه
+              بازگشت به طرح درس
             </a>
           </div>
         </div>

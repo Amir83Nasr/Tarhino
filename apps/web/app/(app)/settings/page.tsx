@@ -1,6 +1,6 @@
 "use client"
 
-import { FileSpreadsheet, GraduationCap, Sparkles } from "lucide-react"
+import { FileSpreadsheet, GraduationCap } from "lucide-react"
 
 import {
   Tabs,
@@ -9,10 +9,13 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 
-import { AiSettingsSection } from "@/features/assistant/assistant-settings"
 import { ExcelSection } from "@/features/excel/excel-section"
+import { ReportsSection } from "@/features/reports/reports-section"
 import {
   ClassesSection,
+  ClassSubjectsSection,
+  GradingModeSection,
+  GradeScaleSection,
   PeriodsSection,
   SchoolsSection,
   SubjectsSection,
@@ -24,7 +27,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-lg">تنظیمات</h1>
         <p className="text-sm text-muted-foreground">
-          اطلاعات پایه، ورود و خروج اکسل، و اتصال هوش مصنوعی.
+          اطلاعات پایه و ورود و خروج اکسل.
         </p>
       </div>
 
@@ -38,25 +41,21 @@ export default function SettingsPage() {
             <FileSpreadsheet />
             اکسل
           </TabsTrigger>
-          <TabsTrigger value="ai" className="gap-1.5">
-            <Sparkles />
-            هوش مصنوعی
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="base" className="grid grid-cols-1 gap-4">
           <SchoolsSection />
           <ClassesSection />
           <SubjectsSection />
+          <GradingModeSection />
+          <GradeScaleSection />
+          <ClassSubjectsSection />
           <PeriodsSection />
         </TabsContent>
 
         <TabsContent value="excel" className="grid grid-cols-1 gap-4">
           <ExcelSection />
-        </TabsContent>
-
-        <TabsContent value="ai" className="grid grid-cols-1 gap-4">
-          <AiSettingsSection />
+          <ReportsSection />
         </TabsContent>
       </Tabs>
     </div>

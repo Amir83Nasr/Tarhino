@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarRange, Undo2 } from "lucide-react"
+import { Undo2 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -29,7 +29,7 @@ export default function NotFound() {
       </div>
       <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
         <Link href="/week" replace className={cn(buttonVariants())}>
-          بازگشت به برنامه
+          بازگشت به طرح درس
         </Link>
         <Button variant="outline" onClick={() => router.back()}>
           <Undo2 />

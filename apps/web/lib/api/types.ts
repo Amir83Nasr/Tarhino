@@ -1,11 +1,16 @@
 export type LessonStatus = "planned" | "done" | "cancelled"
 export type HolidayType = "official" | "school" | "personal"
 
+export type GradingMode = "numeric" | "descriptive"
+
 export type User = {
   id: string
   phone: string
   first_name: string
   last_name: string
+  // Whole-teacher grading mode: one key for all subjects together.
+  grading_mode: GradingMode
+  created_at: string
 }
 
 /** Fields every server row carries. */
@@ -24,7 +29,7 @@ export type TeachingClass = ServerRow & {
   name: string
   grade: string | null
   color: string | null
-  school_id: string | null
+  school_id: string
 }
 
 export type Student = ServerRow & {
@@ -44,6 +49,18 @@ export type Grade = ServerRow & {
   student_id: string
   assessment_id: string
   value: number
+  label: string
+}
+
+export type GradeScale = ServerRow & {
+  subject_id: string
+  excellent_min: number
+  good_min: number
+  pass_min: number
+  excellent_label: string
+  good_label: string
+  fair_label: string
+  needs_label: string
 }
 
 export type Subject = ServerRow & {
@@ -51,7 +68,13 @@ export type Subject = ServerRow & {
   color: string | null
 }
 
+export type ClassSubject = ServerRow & {
+  class_id: string
+  subject_id: string
+}
+
 export type Period = ServerRow & {
+  class_id: string
   label: string
   start_time: string
   end_time: string
@@ -60,9 +83,9 @@ export type Period = ServerRow & {
 
 export type LessonPlan = ServerRow & {
   date: string
-  class_id: string | null
-  subject_id: string | null
-  period_id: string | null
+  class_id: string
+  subject_id: string
+  period_id: string
   start_time: string | null
   end_time: string | null
   activity: string

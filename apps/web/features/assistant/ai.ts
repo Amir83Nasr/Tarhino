@@ -1,30 +1,16 @@
-// Assistant prompts and defaults. Settings live on the teacher's account
-// (GET/PUT /ai/settings); the API key never touches this client beyond the
-// settings form that submits it.
+// Assistant prompts. AI provider/model/key are server-controlled;
+// the client only sends chat messages and renders replies.
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant"
   content: string
 }
 
-export type AiSettings = {
-  base_url: string | null
-  model: string | null
-  has_key: boolean
-  // True when the effective config comes from the shared server default
-  // rather than the user's own stored key.
-  is_default?: boolean
-}
-
-export const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-export const DEFAULT_MODEL = "liquid/lfm-2.5-2.6b:free"
-
 // ── PROMPTS ────────────────────────────────────────────────
 
 export function systemPrompt(context: {
-  classes: string[]
+  classes: { name: string; periods: string[] }[]
   subjects: string[]
-  periods: string[]
   date: string
   plans?: string[]
   tomorrowDate?: string
@@ -32,26 +18,28 @@ export function systemPrompt(context: {
   weekLines?: string[]
 }): string {
   const list = (items: string[]) => (items.length ? items.join("، ") : "—")
+  const classLines = context.classes.length
+    ? context.classes.map((c) => `کلاس ${c.name} — زنگ‌ها: ${list(c.periods)}`)
+    : ["—"]
   return [
     "تو دستیار خلاق یک معلم ایرانی هستی. فارسی جواب بده.",
     "هدف: ایده جالب و قابل اجرا در کلاس واقعی ایران، نه حرف کلی.",
     "هر درخواست ایده = ۲ تا ۳ پیشنهاد متفاوت (بازی، نمایش، مسابقه، داستان، تحرک، کار گروهی).",
     "قالب هر ایده: نام جذاب، زمان لازم، قدم‌های اجرا، وسایل لازم (کم‌هزینه).",
     "کلیشه ممنوع؛ «بحث گروهی» کافی نیست، سناریوی دقیق بده.",
-    "از برنامه امروز/فردا تکراری نباش؛ به سن کلاس و درس وصل کن.",
-    `کلاس‌ها: ${list(context.classes)}`,
+    "از طرح درس امروز/فردا تکراری نباش؛ به سن کلاس و درس وصل کن.",
+    ...classLines,
     `درس‌ها: ${list(context.subjects)}`,
-    `زنگ‌ها: ${list(context.periods)}`,
     `امروز: ${context.date}`,
-    `برنامه امروز: ${context.plans?.length ? context.plans.join(" | ") : "خالی"}`,
+    `طرح درس امروز: ${context.plans?.length ? context.plans.join(" | ") : "خالی"}`,
     ...(context.tomorrowDate
       ? [
           `فردا: ${context.tomorrowDate}`,
-          `برنامه فردا: ${context.tomorrowPlans?.length ? context.tomorrowPlans.join(" | ") : "خالی"}`,
+          `طرح درس فردا: ${context.tomorrowPlans?.length ? context.tomorrowPlans.join(" | ") : "خالی"}`,
         ]
       : []),
     ...(context.weekLines?.length
-      ? ["برنامه دو هفته آینده:", ...context.weekLines]
+      ? ["طرح درس دو هفته آینده:", ...context.weekLines]
       : []),
     PLAN_INSTRUCTIONS,
   ].join("\n")
@@ -64,9 +52,9 @@ export function systemPrompt(context: {
 // normal API. One block = one lesson session; several blocks fill several days.
 
 const PLAN_INSTRUCTIONS = [
-  "وقتی معلم خواست چیزی در برنامه ثبت شود (یک ایده، یک روز، چند روز یا کل هفته):",
-  "۱) تاریخ هر روز را از «امروز» یا فهرست «برنامه دو هفته آینده» به شمسی YYYY/MM/DD حساب کن.",
-  "۲) نام کلاس/درس/زنگ را دقیقاً از فهرست‌های بالا کپی کن؛ اگر نگفت یا در فهرست نبود، رشته خالی بگذار.",
+  "وقتی معلم خواست چیزی در طرح درس ثبت شود (یک ایده، یک روز، چند روز یا کل هفته):",
+  "۱) تاریخ هر روز را از «امروز» یا فهرست «طرح درس دو هفته آینده» به شمسی YYYY/MM/DD حساب کن.",
+  "۲) نام کلاس/درس را دقیقاً از فهرست‌های بالا کپی کن؛ زنگ را فقط از زنگ‌های همان کلاس بردار. هر سه الزامی‌اند؛ اگر معلم نگفت یا در فهرست نبود، همان فیلد را رشته خالی بگذار.",
   "۳) برای هر جلسه یک بلوک ```plan جدا در انتهای پیام بگذار (چند بلوک پشت سر هم مجاز است، حداکثر ۱۰ بلوک) و چیز دیگری داخل بلوک ننویس:",
   "```plan",
   '{"date_jalali":"1404/08/19","activity":"متن فعالیت","class":"","subject":"","period":"","notes":""}',
@@ -156,7 +144,7 @@ function matchId<T extends { id: string }>(
   )
 }
 
-/** Map model-supplied names onto real ids; unknown names stay empty for the teacher to pick. */
+/** Map model-supplied names onto real ids; unknown names stay empty for the teacher to pick. Periods match inside the resolved class only. */
 export function resolvePlanDraft(
   draft: PlanDraft,
   lookups: {
@@ -164,6 +152,7 @@ export function resolvePlanDraft(
     subjects: { id: string; name: string }[]
     periods: {
       id: string
+      class_id: string
       label: string
       start_time: string
       end_time: string
@@ -171,12 +160,16 @@ export function resolvePlanDraft(
   },
   parseJalali: (value: string) => string | null
 ): ResolvedPlan {
-  const periodId = matchId(lookups.periods, (p) => p.label, draft.periodLabel)
+  const classId = matchId(lookups.classes, (c) => c.name, draft.className)
+  const classPeriods = classId
+    ? lookups.periods.filter((p) => p.class_id === classId)
+    : lookups.periods
+  const periodId = matchId(classPeriods, (p) => p.label, draft.periodLabel)
   const period = lookups.periods.find((p) => p.id === periodId)
   return {
     isoDate: draft.dateJalali ? parseJalali(draft.dateJalali) : null,
     activity: draft.activity,
-    classId: matchId(lookups.classes, (c) => c.name, draft.className),
+    classId,
     subjectId: matchId(lookups.subjects, (s) => s.name, draft.subjectName),
     periodId,
     startTime: period?.start_time.slice(0, 5) ?? "",

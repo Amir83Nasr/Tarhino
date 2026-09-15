@@ -15,3 +15,5 @@ for dates use this glyph font ۱۴۰۵٫۰۵٫۰۵
 use Shadcn Components always.
 
 do not use "lg" size for Buttons. use "default" or "xs" for button sizes.
+
+use Dialog for Desktop and use Drawer component for Mobile view.

@@ -44,7 +44,7 @@ class ClassFields(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     grade: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=32)
-    school_id: uuid.UUID | None = None
+    school_id: uuid.UUID
 
 
 class ClassCreate(ClassFields):
@@ -121,9 +121,56 @@ class AssessmentOut(AssessmentFields, _ScopedOut):
     order_index: int
 
 
-# ── GRADES ─────────────────────────────────────────────────
+# ── GRADE SCALES (per-subject descriptive bands) ───────────
 
 MAX_GRADE = 20
+
+
+class GradeScaleFields(BaseModel):
+    subject_id: uuid.UUID
+    excellent_min: float = Field(default=18, ge=0, le=MAX_GRADE)
+    good_min: float = Field(default=15, ge=0, le=MAX_GRADE)
+    pass_min: float = Field(default=10, ge=0, le=MAX_GRADE)
+    excellent_label: str = Field(default="خیلی خوب", min_length=1, max_length=100)
+    good_label: str = Field(default="خوب", min_length=1, max_length=100)
+    fair_label: str = Field(default="قابل قبول", min_length=1, max_length=100)
+    needs_label: str = Field(default="نیازمند تلاش بیشتر", min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def thresholds_descend(self) -> "GradeScaleFields":
+        if not (self.pass_min < self.good_min < self.excellent_min):
+            raise ValueError("thresholds must descend: pass < good < excellent")
+        return self
+
+
+class GradeScaleCreate(GradeScaleFields):
+    pass
+
+
+class GradeScaleUpdate(BaseModel):
+    excellent_min: float | None = Field(default=None, ge=0, le=MAX_GRADE)
+    good_min: float | None = Field(default=None, ge=0, le=MAX_GRADE)
+    pass_min: float | None = Field(default=None, ge=0, le=MAX_GRADE)
+    excellent_label: str | None = Field(default=None, min_length=1, max_length=100)
+    good_label: str | None = Field(default=None, min_length=1, max_length=100)
+    fair_label: str | None = Field(default=None, min_length=1, max_length=100)
+    needs_label: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def thresholds_descend(self) -> "GradeScaleUpdate":
+        mins = [self.pass_min, self.good_min, self.excellent_min]
+        if all(m is not None for m in mins) and not (
+            self.pass_min < self.good_min < self.excellent_min  # type: ignore[operator]
+        ):
+            raise ValueError("thresholds must descend: pass < good < excellent")
+        return self
+
+
+class GradeScaleOut(GradeScaleFields, _ScopedOut):
+    pass
+
+
+# ── GRADES ─────────────────────────────────────────────────
 
 
 class GradeFields(BaseModel):
@@ -143,13 +190,33 @@ class GradeUpdate(BaseModel):
 
 
 class GradeOut(GradeFields, _ScopedOut):
-    pass
+    # Server-computed from the subject's scale at write time; never user input.
+    label: str = ""
 
 
 class GradeUpsert(BaseModel):
     student_id: uuid.UUID
     assessment_id: uuid.UUID
-    value: float = Field(ge=0, le=MAX_GRADE)
+    # Numeric mode sends value; descriptive mode sends level (one of the
+    # subject scale's 4 labels). The server enforces which one applies.
+    value: float | None = Field(default=None, ge=0, le=MAX_GRADE)
+    level: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+# ── CLASS-SUBJECT LINKS ────────────────────────────────────
+
+
+class ClassSubjectFields(BaseModel):
+    class_id: uuid.UUID
+    subject_id: uuid.UUID
+
+
+class ClassSubjectCreate(ClassSubjectFields):
+    pass
+
+
+class ClassSubjectOut(ClassSubjectFields, _ScopedOut):
+    pass
 
 
 # ── SUBJECTS ───────────────────────────────────────────────
@@ -177,6 +244,7 @@ class SubjectOut(SubjectFields, _ScopedOut):
 
 
 class PeriodFields(BaseModel):
+    class_id: uuid.UUID
     label: str = Field(min_length=1, max_length=100)
     start_time: dt.time
     end_time: dt.time
@@ -193,6 +261,7 @@ class PeriodCreate(PeriodFields):
 
 
 class PeriodUpdate(BaseModel):
+    class_id: uuid.UUID | None = None
     label: str | None = Field(default=None, min_length=1, max_length=100)
     start_time: dt.time | None = None
     end_time: dt.time | None = None
@@ -218,9 +287,9 @@ class PeriodOut(PeriodFields, _ScopedOut):
 
 class LessonPlanFields(BaseModel):
     date: dt.date
-    class_id: uuid.UUID | None = None
-    subject_id: uuid.UUID | None = None
-    period_id: uuid.UUID | None = None
+    class_id: uuid.UUID
+    subject_id: uuid.UUID
+    period_id: uuid.UUID
     start_time: dt.time | None = None
     end_time: dt.time | None = None
     activity: str = Field(min_length=1, max_length=2000)

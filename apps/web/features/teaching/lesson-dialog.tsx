@@ -20,8 +20,10 @@ import { toast } from "@workspace/ui/components/sonner"
 
 import { TimeInput } from "@/components/time-input"
 import {
+  useClassSubjects,
   useDeleteLessonPlan,
   useLookups,
+  usePeriodsByClass,
   useSaveLessonPlan,
   type LessonPlanInput,
 } from "@/features/teaching/hooks"
@@ -71,30 +73,40 @@ function LessonForm({
   plan: LessonPlan | null
   onDone: () => void
 }) {
-  const { classes, subjects, periods, period } = useLookups()
-
-  const classItems = [
-    { label: "—", value: null as string | null },
-    ...classes.map((c) => ({ label: c.name, value: c.id as string | null })),
-  ]
-  const subjectItems = [
-    { label: "—", value: null as string | null },
-    ...subjects.map((s) => ({ label: s.name, value: s.id as string | null })),
-  ]
-  const periodItems = [
-    { label: "—", value: null as string | null },
-    ...periods.map((p) => ({ label: p.label, value: p.id as string | null })),
-  ]
-  const statusItems = Object.entries(STATUS_LABELS).map(([value, label]) => ({
-    label,
-    value,
-  }))
+  const { classes, subjects } = useLookups()
 
   const [activity, setActivity] = useState(plan?.activity ?? "")
   const [date] = useState(dateProp ?? "")
   const [classId, setClassId] = useState(plan?.class_id ?? "")
   const [subjectId, setSubjectId] = useState(plan?.subject_id ?? "")
   const [periodId, setPeriodId] = useState(plan?.period_id ?? "")
+
+  const classItems = classes.map((c) => ({ label: c.name, value: c.id }))
+  // Subjects narrow to the chosen class's links; unlinked picks are rejected
+  // server-side with a 422 toast (see submit below).
+  const links = useClassSubjects(classId || null)
+  const linkedIds =
+    links === undefined ? null : new Set(links.map((l) => l.subject_id))
+  const subjectItems = subjects
+    .filter((s) => linkedIds === null || linkedIds.has(s.id))
+    .map((s) => ({ label: s.name, value: s.id }))
+  // Bells belong to the class: switching class resets a stale period pick.
+  const classPeriods = usePeriodsByClass(classId || null)
+  const periodItems = (classPeriods ?? []).map((p) => ({
+    label: p.label,
+    value: p.id,
+  }))
+
+  function pickClass(id: string) {
+    setClassId(id)
+    // Subjects and bells belong to the class: drop stale picks.
+    setSubjectId("")
+    setPeriodId("")
+  }
+  const statusItems = Object.entries(STATUS_LABELS).map(([value, label]) => ({
+    label,
+    value,
+  }))
   const [startTime, setStartTime] = useState(
     plan?.start_time?.slice(0, 5) ?? ""
   )
@@ -115,7 +127,7 @@ function LessonForm({
 
   function pickPeriod(id: string) {
     setPeriodId(id)
-    const chosen = period(id)
+    const chosen = (classPeriods ?? []).find((p) => p.id === id)
     // Times come from the bell schedule unless the teacher already set them.
     if (chosen && !startTime && !endTime) {
       setStartTime(chosen.start_time.slice(0, 5))
@@ -129,13 +141,17 @@ function LessonForm({
       toast.error("شرح فعالیت را وارد کنید")
       return
     }
+    if (!classId || !subjectId || !periodId) {
+      toast.error("کلاس، درس و زنگ را انتخاب کنید")
+      return
+    }
 
     const input: LessonPlanInput = {
       date,
       activity: activity.trim(),
-      class_id: classId || null,
-      subject_id: subjectId || null,
-      period_id: periodId || null,
+      class_id: classId,
+      subject_id: subjectId,
+      period_id: periodId,
       start_time: startTime || null,
       end_time: endTime || null,
       status,
@@ -168,16 +184,16 @@ function LessonForm({
           <Select
             items={classItems}
             value={classId || null}
-            onValueChange={(value) => setClassId(value ?? "")}
+            onValueChange={(value) => value && pickClass(value)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="—" />
+              <SelectValue placeholder="کلاس…" />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
                 <SelectLabel>کلاس‌ها</SelectLabel>
                 {classItems.map((item) => (
-                  <SelectItem key={item.value ?? ""} value={item.value}>
+                  <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
                 ))}
@@ -194,13 +210,13 @@ function LessonForm({
             onValueChange={(value) => setSubjectId(value ?? "")}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="—" />
+              <SelectValue placeholder="درس…" />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
                 <SelectLabel>درس‌ها</SelectLabel>
                 {subjectItems.map((item) => (
-                  <SelectItem key={item.value ?? ""} value={item.value}>
+                  <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>
                 ))}
@@ -216,15 +232,18 @@ function LessonForm({
           items={periodItems}
           value={periodId || null}
           onValueChange={(value) => pickPeriod(value ?? "")}
+          disabled={!classId}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="—" />
+            <SelectValue
+              placeholder={classId ? "زنگ…" : "اول کلاس را انتخاب کنید"}
+            />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false}>
             <SelectGroup>
               <SelectLabel>زنگ‌ها</SelectLabel>
               {periodItems.map((item) => (
-                <SelectItem key={item.value ?? ""} value={item.value}>
+                <SelectItem key={item.value} value={item.value}>
                   {item.label}
                 </SelectItem>
               ))}

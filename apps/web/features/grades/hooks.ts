@@ -255,24 +255,26 @@ export function useUpsertGrade(subjectId: string) {
     mutationFn: ({
       studentId,
       assessmentId,
-      value,
+      grade,
     }: {
       studentId: string
       assessmentId: string
-      value: number
-    }) => upsertGrade(studentId, assessmentId, value),
-    onMutate: async ({ studentId, assessmentId, value }) => {
+      grade: { value: number } | { level: string }
+    }) => upsertGrade(studentId, assessmentId, grade),
+    onMutate: async ({ studentId, assessmentId, grade }) => {
       await client.cancelQueries({ queryKey: gradeKey })
       const previous = client.getQueryData<Gradebook>(gradeKey)
       client.setQueryData<Gradebook>(gradeKey, (old) => {
         if (!old) return old
+        const patch =
+          "level" in grade ? { label: grade.level } : { value: grade.value }
         const hit = old.grades.find(
           (g) => g.student_id === studentId && g.assessment_id === assessmentId
         )
         if (hit) {
           return {
             ...old,
-            grades: old.grades.map((g) => (g === hit ? { ...g, value } : g)),
+            grades: old.grades.map((g) => (g === hit ? { ...g, ...patch } : g)),
           }
         }
         const now = new Date().toISOString()
@@ -286,7 +288,8 @@ export function useUpsertGrade(subjectId: string) {
               updated_at: now,
               student_id: studentId,
               assessment_id: assessmentId,
-              value,
+              value: "level" in grade ? 0 : grade.value,
+              label: "level" in grade ? grade.level : "",
             },
           ],
         }

@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarRange, RotateCcw } from "lucide-react"
+import { RotateCcw } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useEffect } from "react"
@@ -31,7 +31,7 @@ export default function Error({
       <div className="flex flex-col gap-1.5">
         <h1 className="text-lg font-bold">مشکلی پیش آمد</h1>
         <p className="text-sm text-muted-foreground">
-          صفحه باز نشد. یک بار دیگر تلاش کنید؛ اگر درست نشد، به برنامه برگردید.
+          صفحه باز نشد. یک بار دیگر تلاش کنید؛ اگر درست نشد، به طرح درس برگردید.
         </p>
       </div>
       <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
@@ -44,7 +44,7 @@ export default function Error({
           replace
           className={cn(buttonVariants({ variant: "outline" }))}
         >
-          بازگشت به برنامه
+          بازگشت به طرح درس
         </Link>
       </div>
     </div>
