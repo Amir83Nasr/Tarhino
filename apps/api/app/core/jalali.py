@@ -163,6 +163,13 @@ def weekday_name(date: dt.date) -> str:
     return _PERSIAN_WEEKDAYS[(date.weekday() + 2) % 7]
 
 
+def academic_year_label(date: dt.date) -> str:
+    """Jalali school year for a date: Mehr onward jy–jy+1, else jy-1–jy."""
+    jy, jm, _ = gregorian_to_jalali(date.year, date.month, date.day)
+    start = jy if jm >= 7 else jy - 1
+    return f"{to_persian_digits(start)}–{to_persian_digits(start + 1)}"
+
+
 def month_name(month: int) -> str:
     return _PERSIAN_MONTHS[month - 1]
 

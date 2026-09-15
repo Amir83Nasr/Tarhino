@@ -16,6 +16,7 @@ function ThemeProvider({
       {...props}
     >
       <ThemeHotkey />
+      <ThemeColorSync />
       {children}
     </NextThemesProvider>
   )
@@ -64,6 +65,27 @@ function ThemeHotkey() {
       window.removeEventListener("keydown", onKeyDown)
     }
   }, [resolvedTheme, setTheme])
+
+  return null
+}
+
+function ThemeColorSync() {
+  const { resolvedTheme } = useTheme()
+
+  React.useEffect(() => {
+    if (!resolvedTheme) return
+    // Next renders one theme-color meta per prefers-color-scheme media.
+    // Replace with a single meta so the Chrome toolbar follows the
+    // in-app theme toggle, not the OS preference.
+    const color = resolvedTheme === "dark" ? "#060606" : "#be123c"
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((m) => m.remove())
+    const meta = document.createElement("meta")
+    meta.name = "theme-color"
+    meta.content = color
+    document.head.appendChild(meta)
+  }, [resolvedTheme])
 
   return null
 }

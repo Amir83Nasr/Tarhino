@@ -1,6 +1,7 @@
 "use client"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { Smartphone } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
@@ -146,18 +147,28 @@ export function AuthForm() {
           {step === "phone" ? (
             <>
               <FieldLabel htmlFor="phone">شماره موبایل</FieldLabel>
-              <Input
-                id="phone"
-                inputMode="tel"
-                dir="ltr"
-                autoComplete="tel"
-                placeholder="09123456789"
-                value={normalizedPhone}
-                maxLength={11}
-                aria-invalid={phone.length > 0 && !phoneValid}
-                onChange={(e) => setPhone(normalizePhone(e.target.value))}
-                autoFocus
-              />
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                  <Smartphone
+                    className="size-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                </div>
+                <Input
+                  id="phone"
+                  type="tel"
+                  inputMode="tel"
+                  dir="ltr"
+                  autoComplete="tel"
+                  placeholder="مثلاً ۰۹۱۲۰۰۰۰۰۰۰"
+                  value={normalizedPhone}
+                  maxLength={11}
+                  aria-invalid={phone.length > 0 && !phoneValid}
+                  onChange={(e) => setPhone(normalizePhone(e.target.value))}
+                  autoFocus
+                  className="pr-8 text-left"
+                />
+              </div>
               {phone.length > 0 && !phoneValid && (
                 <FieldDescription>
                   شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.

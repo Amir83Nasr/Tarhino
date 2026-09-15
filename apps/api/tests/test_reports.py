@@ -1,6 +1,7 @@
 import datetime as dt
 
 from app.core.jalali import (
+    academic_year_label,
     gregorian_to_jalali,
     month_name,
     numeric_jalali,
@@ -8,6 +9,11 @@ from app.core.jalali import (
     weekday_name,
 )
 from app.main import API_PREFIX, app
+from app.reports.excel import (
+    excel_response,
+    timetable_excel_filename,
+    timetable_excel_html,
+)
 from app.reports.grades import (
     GradeScaleBands,
     describe_level,
@@ -22,11 +28,15 @@ from app.reports.pdf import (
     grade_sheet_filename,
     jalali_stamp,
     pdf_response,
+    report_card_filename,
     schedule_filename,
     student_list_filename,
+    timetable_filename,
 )
+from app.reports.report_card import build_student_card, report_card_dataset
 from app.reports.schedule import schedule_dataset
 from app.reports.students import student_list_dataset
+from app.reports.timetable import timetable_dataset
 
 
 def test_student_list_dataset_numbers_rows() -> None:
@@ -42,7 +52,55 @@ def test_report_routes_are_registered() -> None:
     paths = set(app.openapi()["paths"])
     assert f"{API_PREFIX}/reports/students/{{class_id}}.pdf" in paths
     assert f"{API_PREFIX}/reports/grades/{{subject_id}}.pdf" in paths
+    assert f"{API_PREFIX}/reports/report-cards/{{class_id}}.pdf" in paths
+    assert f"{API_PREFIX}/reports/report-cards/{{class_id}}/{{student_id}}.pdf" in paths
     assert f"{API_PREFIX}/reports/schedule.pdf" in paths
+    assert f"{API_PREFIX}/reports/timetable/{{class_id}}.pdf" in paths
+
+
+def test_timetable_dataset_pivots_cells() -> None:
+    dataset = timetable_dataset(
+        [("p1", "زنگ اول", "۰۸:۰۰ تا ۰۹:۳۰"), ("p2", "زنگ دوم", "۰۹:۴۵ تا ۱۱:۱۵")],
+        {(0, "p1"): "ریاضی", (2, "p2"): "فارسی"},
+        teacher_name="سارا معلم",
+        class_name="هفتم الف",
+        weekdays=["شنبه", "یک‌شنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه"],
+        school_name="قیام",
+        academic_year="۱۴۰۵–۱۴۰۶",
+    )
+    assert dataset.title == "برنامه هفتگی"
+    assert [r.period_label for r in dataset.rows] == ["زنگ اول", "زنگ دوم"]
+    assert dataset.rows[0].cells == ["ریاضی", None, None, None, None]
+    assert dataset.rows[1].cells == [None, None, "فارسی", None, None]
+    assert dataset.school_name == "قیام"
+    assert dataset.academic_year == "۱۴۰۵–۱۴۰۶"
+
+
+def test_timetable_html_has_centered_header_and_cells() -> None:
+    from app.reports.pdf import _timetable_html
+
+    dataset = timetable_dataset(
+        [("p1", "زنگ اول", "۰۸:۰۰ تا ۰۹:۳۰")],
+        {(0, "p1"): "ریاضی"},
+        teacher_name="سارا معلم",
+        class_name="هفتم الف",
+        weekdays=["شنبه", "یک‌شنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه"],
+        school_name="قیام",
+        academic_year="۱۴۰۵–۱۴۰۶",
+    )
+    html = _timetable_html(dataset)
+    assert "برنامه هفتگی" in html
+    assert "مدرسه: قیام" in html
+    assert "کلاس: هفتم الف" in html
+    assert "آموزگار: سارا معلم" in html
+    assert "سال تحصیلی: ۱۴۰۵–۱۴۰۶" in html
+    assert 'class="timetable-head"' in html
+    assert 'class="timetable"' in html
+
+
+def test_timetable_filename_includes_class_and_stamp() -> None:
+    day = dt.date(2026, 9, 15)
+    assert timetable_filename("هفتم الف", day) == f"برنامه-هفتگی-هفتم-الف-{jalali_stamp(day)}.pdf"
 
 
 def test_grade_sheet_dataset_pivots_cells() -> None:
@@ -96,43 +154,17 @@ def test_describe_level_bands() -> None:
     assert describe_level(9.99) == "نیازمند تلاش بیشتر"
 
 
-def test_describe_level_custom_scale() -> None:
-    scale = GradeScaleBands(
-        excellent_min=19,
-        good_min=16,
-        pass_min=12,
-        excellent_label="عالی",
-        good_label="شایسته",
-        fair_label="متوسط",
-        needs_label="ضعیف",
-    )
-    assert describe_level(19, scale) == "عالی"
-    assert describe_level(18.99, scale) == "شایسته"
-    assert describe_level(12, scale) == "متوسط"
-    assert describe_level(11.99, scale) == "ضعیف"
-
-
-def test_grade_sheet_dataset_custom_scale_labels_average() -> None:
-    scale = GradeScaleBands(
-        excellent_min=19,
-        good_min=16,
-        pass_min=12,
-        excellent_label="عالی",
-        good_label="شایسته",
-        fair_label="متوسط",
-        needs_label="ضعیف",
-    )
+def test_grade_sheet_dataset_labels_average_with_fixed_bands() -> None:
     dataset = grade_sheet_dataset(
         ["علی احمدی"],
         ["امتحان اول", "امتحان دوم"],
         {("علی احمدی", "امتحان اول"): 18.0, ("علی احمدی", "امتحان دوم"): 17.0},
         subject_name="ریاضی",
         class_name="هفتم الف",
-        scale=scale,
     )
     (row,) = dataset.rows
     assert row.average == "۱۷٫۵"
-    assert row.level == "شایسته"
+    assert row.level == "خوب"
 
 
 def test_level_value_stays_inside_its_band() -> None:
@@ -155,20 +187,6 @@ def test_level_value_stays_inside_its_band() -> None:
     assert describe_level(value_for_level_label(scale.needs_label, scale), scale) == (
         scale.needs_label
     )
-
-
-def test_level_value_custom_scale_round_trips() -> None:
-    scale = GradeScaleBands(
-        excellent_min=19,
-        good_min=16,
-        pass_min=12,
-        excellent_label="عالی",
-        good_label="شایسته",
-        fair_label="متوسط",
-        needs_label="ضعیف",
-    )
-    for label in ("عالی", "شایسته", "متوسط", "ضعیف"):
-        assert describe_level(value_for_level_label(label, scale), scale) == label
 
 
 def test_grade_sheet_dataset_descriptive_hides_numbers() -> None:
@@ -196,7 +214,7 @@ def test_format_grade_trims_zeros() -> None:
 def test_schedule_dataset_keeps_empty_days() -> None:
     dataset = schedule_dataset(
         [
-            ("2026-09-13", [("تمرین", "هفتم الف", "ریاضی", "زنگ اول", "08:00-09:30")]),
+            ("2026-09-13", [("زنگ اول", "ریاضی", "تمرین")]),
             ("2026-09-14", []),
         ],
         teacher_name="سارا معلم",
@@ -204,6 +222,59 @@ def test_schedule_dataset_keeps_empty_days() -> None:
     )
     assert dataset.days[1] == ("2026-09-14", [])
     assert dataset.teacher_name == "سارا معلم"
+    assert dataset.title == "طرح درس هفتگی و روزانه"
+
+
+def test_academic_year_label_splits_on_mehr() -> None:
+    # Shahrivar 1405 belongs to 1404–1405; Mehr 1405 starts 1405–1406.
+    assert academic_year_label(dt.date(2026, 9, 13)) == "۱۴۰۴–۱۴۰۵"
+    assert academic_year_label(dt.date(2026, 9, 23)) == "۱۴۰۵–۱۴۰۶"
+
+
+def test_schedule_dataset_carries_header_fields() -> None:
+    dataset = schedule_dataset(
+        [("2026-09-13", [])],
+        teacher_name="سارا معلم",
+        range_label="بازه",
+        school_name="قیام",
+        class_name="هفتم الف",
+        academic_year="۱۴۰۵–۱۴۰۶",
+    )
+    assert dataset.school_name == "قیام"
+    assert dataset.class_name == "هفتم الف"
+    assert dataset.academic_year == "۱۴۰۵–۱۴۰۶"
+
+
+def test_schedule_pdf_splits_weeks_at_saturday() -> None:
+    from app.reports.pdf import _schedule_html, _week_groups
+
+    days = [
+        ("2026-09-19", [("زنگ اول", "ریاضی", "تمرین")]),  # Saturday
+        ("2026-09-20", [("زنگ اول", "فارسی", "خواندن")]),
+        ("2026-09-21", []),
+        ("2026-09-22", []),
+        ("2026-09-23", []),
+        ("2026-09-24", []),
+        ("2026-09-25", []),
+        ("2026-09-26", [("زنگ اول", "علوم", "آزمایش")]),  # next Saturday
+    ]
+    dataset = schedule_dataset(
+        days,
+        teacher_name="سارا معلم",
+        range_label="بازه",
+        school_name="قیام",
+        class_name="هفتم الف",
+        academic_year="۱۴۰۵–۱۴۰۶",
+    )
+    weeks = _week_groups(dataset)
+    assert [len(w) for w in weeks] == [7, 1]
+    html = _schedule_html(dataset)
+    # One page per week, full header on each, columns = days + ردیف.
+    assert html.count('<div class="week-page"') == 2
+    assert html.count("طرح درس هفتگی و روزانه") == 2
+    assert html.count("سال تحصیلی:") == 2
+    assert html.count("مدرسه:") == 2
+    assert "week-table" in html
 
 
 def test_jalali_helpers_match_frontend_style() -> None:
@@ -223,7 +294,48 @@ def test_pdf_filenames_are_persian_and_stamped() -> None:
     assert jalali_stamp(day) == "1405-06-22"
     assert student_list_filename("هفتم الف", day) == "فهرست-دانش‌آموزان-هفتم-الف-1405-06-22.pdf"
     assert grade_sheet_filename("ریاضی", "هفتم الف", day) == "کارنامه-ریاضی-هفتم-الف-1405-06-22.pdf"
+    assert report_card_filename("هفتم الف", day) == "کارنامه-کلاس-هفتم-الف-1405-06-22.pdf"
+    assert (
+        report_card_filename("هفتم الف", day, "علی احمدی")
+        == "کارنامه-علی-احمدی-هفتم-الف-1405-06-22.pdf"
+    )
     assert schedule_filename(day, dt.date(2026, 9, 19)) == "طرح-درس-1405-06-22-تا-1405-06-28.pdf"
+    assert (
+        timetable_excel_filename("هفتم الف", day)
+        == f"برنامه-هفتگی-هفتم-الف-{jalali_stamp(day)}.xls"
+    )
+
+
+def test_report_card_collapses_subject_means() -> None:
+    card = build_student_card(
+        "علی احمدی",
+        [
+            ("ریاضی", [18.0, 16.0], GradeScaleBands()),
+            ("فارسی", [], GradeScaleBands()),
+        ],
+    )
+    assert [(r.subject_name, r.average, r.level) for r in card.rows] == [
+        ("ریاضی", "۱۷", "خوب"),
+        ("فارسی", None, None),
+    ]
+    assert card.overall == "۱۷"
+    assert card.overall_level == "خوب"
+
+
+def test_report_card_descriptive_hides_numbers() -> None:
+    card = build_student_card(
+        "علی احمدی",
+        [("ریاضی", [18.0], GradeScaleBands())],
+        numeric=False,
+    )
+    assert [(r.subject_name, r.average, r.level) for r in card.rows] == [
+        ("ریاضی", None, "خیلی خوب")
+    ]
+    assert card.overall is None
+    assert card.overall_level == "خیلی خوب"
+    dataset = report_card_dataset([card], class_name="هفتم الف", numeric=False)
+    assert dataset.title == "کارنامه دانش‌آموز"
+    assert dataset.numeric is False
 
 
 def test_pdf_response_sets_disposition() -> None:
@@ -232,3 +344,32 @@ def test_pdf_response_sets_disposition() -> None:
     disposition = response.headers["content-disposition"]
     assert "attachment" in disposition
     assert "filename*=UTF-8''" in disposition
+
+
+def test_timetable_excel_renders_grid_with_bom() -> None:
+    dataset = timetable_dataset(
+        [("p1", "زنگ اول", "۰۸:۰۰ تا ۰۹:۳۰")],
+        {(0, "p1"): "ریاضی"},
+        teacher_name="سارا معلم",
+        class_name="هفتم الف",
+        weekdays=["شنبه", "یک‌شنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه"],
+        school_name="قیام",
+        academic_year="۱۴۰۵–۱۴۰۶",
+    )
+    html = timetable_excel_html(dataset)
+    assert "مدرسه: قیام" in html
+    assert "سال تحصیلی: ۱۴۰۵–۱۴۰۶" in html
+    assert "text-align:center" in html
+    response = excel_response(html, timetable_excel_filename("هفتم الف", dt.date(2026, 9, 15)))
+    assert response.media_type == "application/vnd.ms-excel"
+    # BOM first so Excel detects UTF-8; header row, subject, class all present.
+    assert response.body.startswith(b"\xef\xbb\xbf")
+    assert "شنبه".encode() in response.body
+    assert "ریاضی".encode() in response.body
+    assert "هفتم الف".encode() in response.body
+    assert "filename*=UTF-8''" in response.headers["content-disposition"]
+
+
+def test_timetable_xls_route_is_registered() -> None:
+    paths = set(app.openapi()["paths"])
+    assert f"{API_PREFIX}/reports/timetable/{{class_id}}.xls" in paths

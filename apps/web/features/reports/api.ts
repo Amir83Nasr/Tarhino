@@ -25,7 +25,7 @@ function filenameFrom(response: Response, fallback: string): string {
   return fallback
 }
 
-async function downloadPdf(path: string, fallback: string) {
+async function downloadFile(path: string, fallback: string) {
   const headers = new Headers()
   const token = getAccessToken()
   if (token) headers.set("Authorization", `Bearer ${token}`)
@@ -43,6 +43,10 @@ async function downloadPdf(path: string, fallback: string) {
   URL.revokeObjectURL(url)
 }
 
+function downloadPdf(path: string, fallback: string) {
+  return downloadFile(path, fallback)
+}
+
 export const downloadStudentListPdf = (classId: string) =>
   downloadPdf(`/reports/students/${classId}.pdf`, "tarhino-students.pdf")
 
@@ -52,8 +56,33 @@ export const downloadGradeSheetPdf = (subjectId: string, classId?: string) =>
     "tarhino-grades.pdf"
   )
 
-export const downloadSchedulePdf = (from: string, to: string) =>
+export const downloadClassReportCardsPdf = (classId: string) =>
   downloadPdf(
-    `/reports/schedule.pdf?date_from=${from}&date_to=${to}`,
+    `/reports/report-cards/${classId}.pdf`,
+    "tarhino-report-cards.pdf"
+  )
+
+export const downloadStudentReportCardPdf = (
+  classId: string,
+  studentId: string
+) =>
+  downloadPdf(
+    `/reports/report-cards/${classId}/${studentId}.pdf`,
+    "tarhino-report-card.pdf"
+  )
+
+export const downloadSchedulePdf = (
+  from: string,
+  to: string,
+  classId?: string
+) =>
+  downloadPdf(
+    `/reports/schedule.pdf?date_from=${from}&date_to=${to}${classId ? `&class_id=${classId}` : ""}`,
     "tarhino-schedule.pdf"
   )
+
+export const downloadTimetablePdf = (classId: string) =>
+  downloadPdf(`/reports/timetable/${classId}.pdf`, "tarhino-timetable.pdf")
+
+export const downloadTimetableXls = (classId: string) =>
+  downloadFile(`/reports/timetable/${classId}.xls`, "tarhino-timetable.xls")

@@ -28,9 +28,34 @@ def test_teaching_resources_are_registered() -> None:
         "periods",
         "lesson-plans",
         "holidays",
+        "weekly-slots",
     ):
         assert f"{API_PREFIX}/{resource}" in paths
         assert f"{API_PREFIX}/{resource}/{{item_id}}" in paths
+
+
+def test_weekly_slot_scoped_lookups_are_registered() -> None:
+    paths = set(app.openapi()["paths"])
+
+    assert f"{API_PREFIX}/weekly-slots/by-class/{{class_id}}" in paths
+    assert f"{API_PREFIX}/lesson-plans/ensure-week" in paths
+    assert f"{API_PREFIX}/weekly-slots/apply" not in paths
+
+
+def test_weekly_slot_rejects_out_of_range_weekday() -> None:
+    import uuid
+
+    from app.schemas.teaching import WeeklySlotCreate
+
+    ids = {"class_id": uuid.uuid4(), "subject_id": uuid.uuid4(), "period_id": uuid.uuid4()}
+    WeeklySlotCreate(weekday=0, **ids)
+    WeeklySlotCreate(weekday=4, **ids)
+
+    with pytest.raises(ValidationError):
+        WeeklySlotCreate(weekday=5, **ids)
+
+    with pytest.raises(ValidationError):
+        WeeklySlotCreate(weekday=-1, **ids)
 
 
 def test_class_subject_scoped_lookups_are_registered() -> None:
@@ -126,32 +151,10 @@ def test_bulk_still_rejects_empty_and_overlong() -> None:
     assert len(BulkCreate(items=[item] * 2).items) == 2
 
 
-def test_grade_scale_routes_are_registered() -> None:
+def test_descriptive_grading_mode_endpoint_is_gone() -> None:
     paths = set(app.openapi()["paths"])
 
-    assert f"{API_PREFIX}/grade-scales" in paths
-    assert f"{API_PREFIX}/grade-scales/{{item_id}}" in paths
-    assert f"{API_PREFIX}/grade-scales/by-subject/{{subject_id}}" in paths
-    assert f"{API_PREFIX}/grade-scales/by-subject/{{subject_id}}/relabel" in paths
-
-
-def test_grade_scale_rejects_inverted_thresholds() -> None:
-    from app.schemas.teaching import GradeScaleCreate
-
-    subject = "c1f0f6a0-0000-4000-8000-000000000001"
-    GradeScaleCreate(subject_id=subject, excellent_min=18, good_min=15, pass_min=10)
-
-    with pytest.raises(ValidationError):
-        GradeScaleCreate(subject_id=subject, excellent_min=15, good_min=15, pass_min=10)
-
-    with pytest.raises(ValidationError):
-        GradeScaleCreate(subject_id=subject, excellent_min=10, good_min=15, pass_min=18)
-
-
-def test_grading_mode_switch_is_registered() -> None:
-    paths = set(app.openapi()["paths"])
-
-    assert f"{API_PREFIX}/users/me/grading-mode" in paths
+    assert f"{API_PREFIX}/users/me/grading-mode" not in paths
 
 
 def test_grade_upsert_accepts_level_for_descriptive_mode() -> None:
@@ -165,8 +168,7 @@ def test_grade_upsert_accepts_level_for_descriptive_mode() -> None:
         level="خیلی خوب",
     )
 
-    # Numeric-only callers send value; descriptive-only callers send level —
-    # both shapes must validate, the router enforces which one applies.
+    # Descriptive-only: callers send level, the router rejects numeric value.
 
 
 def test_users_me_requires_bearer_auth() -> None:
@@ -224,3 +226,46 @@ def test_change_password_requires_long_new_password() -> None:
 
     with pytest.raises(ValidationError):
         ChangePasswordRequest(current_password="x", new_password="short")
+
+
+def test_elementary_setup_is_registered() -> None:
+    paths = set(app.openapi()["paths"])
+
+    assert f"{API_PREFIX}/classes/elementary-setup" in paths
+
+
+def test_elementary_presets_cover_grades_and_shifts() -> None:
+    from app.schemas.teaching import ElementarySetupCreate
+    from app.teaching.elementary import (
+        ELEMENTARY_GRADES,
+        ELEMENTARY_SUBJECTS,
+        SHIFT_PERIODS,
+        SHIFTS,
+    )
+
+    assert len(ELEMENTARY_GRADES) == 6
+    assert set(ELEMENTARY_SUBJECTS) == set(ELEMENTARY_GRADES)
+    for subjects in ELEMENTARY_SUBJECTS.values():
+        assert len(subjects) >= 6  # core + sport/art minimum
+    for bells in SHIFT_PERIODS.values():
+        assert len(bells) == 5  # 5 bells/day
+    assert set(SHIFTS) == {"morning", "afternoon", "rotating"}
+
+    row = ElementarySetupCreate(school_name="قیام", grade="پایه اول", shift="morning")
+    assert row.shift == "morning"
+    with pytest.raises(ValidationError):
+        ElementarySetupCreate(school_name="قیام", shift="morning")  # type: ignore[call-arg]
+
+
+def test_effective_shift_alternates_weekly_for_rotating() -> None:
+    import datetime as dt
+
+    from app.teaching.elementary import effective_shift, saturday_of
+
+    anchor = saturday_of(dt.date(2026, 9, 12))
+    assert effective_shift("morning", None, anchor) == "morning"
+    assert effective_shift("afternoon", None, anchor) == "afternoon"
+    assert effective_shift("rotating", anchor, anchor) == "morning"
+    assert effective_shift("rotating", anchor, anchor + dt.timedelta(days=7)) == "afternoon"
+    assert effective_shift("rotating", anchor, anchor + dt.timedelta(days=14)) == "morning"
+    assert saturday_of(dt.date(2026, 9, 13)).weekday() == 5  # Sunday -> Saturday

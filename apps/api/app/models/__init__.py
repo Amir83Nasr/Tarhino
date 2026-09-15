@@ -8,8 +8,8 @@ from app.models.teaching import (
     School,
     Student,
     Subject,
-    SubjectGradeScale,
     TeachingClass,
+    WeeklySlot,
 )
 from app.models.user import RefreshToken, User
 
@@ -24,7 +24,7 @@ __all__ = [
     "School",
     "Student",
     "Subject",
-    "SubjectGradeScale",
     "TeachingClass",
     "User",
+    "WeeklySlot",
 ]

@@ -27,7 +27,7 @@ class GradeSheetDataset:
 
 @dataclass(frozen=True)
 class GradeScaleBands:
-    """Per-subject descriptive bands. Thresholds descend: excellent > good > pass."""
+    """Fixed descriptive bands. Thresholds descend: excellent > good > pass."""
 
     excellent_min: float = 18
     good_min: float = 15
@@ -58,7 +58,7 @@ def level_value(level: str, scale: GradeScaleBands = DEFAULT_SCALE) -> float:
 
 
 def value_for_level_label(label: str, scale: GradeScaleBands = DEFAULT_SCALE) -> float:
-    """Stored value for a picked label under the given per-subject scale."""
+    """Stored value for a picked label under the fixed bands."""
     if label == scale.excellent_label:
         return float(scale.excellent_min)
     if label == scale.good_label:
@@ -71,7 +71,7 @@ def value_for_level_label(label: str, scale: GradeScaleBands = DEFAULT_SCALE) ->
 
 
 def describe_level(value: float, scale: GradeScaleBands = DEFAULT_SCALE) -> str:
-    """Descriptive band for a 0–20 value under the given per-subject scale."""
+    """Descriptive band for a 0–20 value under the fixed bands."""
     if value >= scale.excellent_min:
         return scale.excellent_label
     if value >= scale.good_min:

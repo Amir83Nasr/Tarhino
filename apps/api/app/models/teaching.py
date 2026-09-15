@@ -44,7 +44,11 @@ class School(UserScoped):
 
 
 class TeachingClass(UserScoped):
-    """A class always belongs to a school (strict tree: school -> class)."""
+    """A class always belongs to a school (strict tree: school -> class).
+
+    One class per teacher: shift picks which bell set is active. `rotating`
+    alternates morning/afternoon each week around `shift_anchor` (a Saturday).
+    """
 
     __tablename__ = "classes"
 
@@ -52,6 +56,18 @@ class TeachingClass(UserScoped):
     grade: Mapped[str | None] = mapped_column(String(100), default=None)
     color: Mapped[str | None] = mapped_column(String(32), default=None)
     school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"))
+    shift: Mapped[str] = mapped_column(String(16), default="morning")
+    shift_anchor: Mapped[dt.date | None] = mapped_column(Date, default=None)
+
+    @property
+    def active_shift(self) -> str:
+        """Bell set active this week (rotating alternates around the anchor)."""
+        from datetime import UTC, datetime
+
+        from app.teaching.elementary import effective_shift
+
+        today = datetime.now(UTC).date()
+        return effective_shift(self.shift or "morning", self.shift_anchor, today)
 
 
 class Student(UserScoped):
@@ -92,7 +108,7 @@ class ClassSubject(UserScoped):
 
 
 class Period(UserScoped):
-    """One class's bell. The per-teacher global schedule is gone."""
+    """One class's bell. Each class holds two 5-bell sets (morning/afternoon)."""
 
     __tablename__ = "periods"
     __table_args__ = (
@@ -107,6 +123,7 @@ class Period(UserScoped):
     start_time: Mapped[dt.time] = mapped_column(Time)
     end_time: Mapped[dt.time] = mapped_column(Time)
     order_index: Mapped[int] = mapped_column(Integer)
+    shift: Mapped[str] = mapped_column(String(16), default="morning")
 
 
 class LessonPlan(UserScoped):
@@ -140,6 +157,27 @@ class LessonPlan(UserScoped):
     status: Mapped[str] = mapped_column(String(16), default="planned")
 
 
+class WeeklySlot(UserScoped):
+    """One cell of the teacher's fixed weekly timetable: weekday + period.
+
+    Stable across the school year; "ensure-week" copies cells into LessonPlans for a
+    concrete week. Same strict tree as LessonPlan (class + linked subject +
+    period of that class).
+    """
+
+    __tablename__ = "weekly_slots"
+    __table_args__ = (
+        UniqueConstraint("user_id", "class_id", "weekday", "period_id", name="uq_weekly_slot_cell"),
+        Index("ix_weekly_slots_user_class", "user_id", "class_id"),
+    )
+
+    # Saturday-first index: 0 = شنبه … 4 = چهارشنبه.
+    weekday: Mapped[int] = mapped_column(Integer)
+    class_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("classes.id", ondelete="CASCADE"))
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"))
+    period_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("periods.id", ondelete="CASCADE"))
+
+
 class Assessment(UserScoped):
     """A grade column on a subject. weight reserved for future averages."""
 
@@ -152,24 +190,6 @@ class Assessment(UserScoped):
     title: Mapped[str] = mapped_column(String(100))
     weight: Mapped[float] = mapped_column(Numeric(6, 2), default=1)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class SubjectGradeScale(UserScoped):
-    """Per-subject descriptive bands for a 0–20 value. One row per subject."""
-
-    __tablename__ = "grade_scales"
-    __table_args__ = (UniqueConstraint("user_id", "subject_id", name="uq_grade_scale_subject"),)
-
-    subject_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("subjects.id", ondelete="CASCADE"), index=True
-    )
-    excellent_min: Mapped[float] = mapped_column(Numeric(5, 2), default=18)
-    good_min: Mapped[float] = mapped_column(Numeric(5, 2), default=15)
-    pass_min: Mapped[float] = mapped_column(Numeric(5, 2), default=10)
-    excellent_label: Mapped[str] = mapped_column(String(100), default="خیلی خوب")
-    good_label: Mapped[str] = mapped_column(String(100), default="خوب")
-    fair_label: Mapped[str] = mapped_column(String(100), default="قابل قبول")
-    needs_label: Mapped[str] = mapped_column(String(100), default="نیازمند تلاش بیشتر")
 
 
 class Grade(UserScoped):

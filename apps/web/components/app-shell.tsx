@@ -2,12 +2,12 @@
 
 import {
   CalendarRange,
+  CalendarDays,
   GraduationCap,
   Settings,
   Sparkles,
   User,
 } from "lucide-react"
-import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
@@ -15,11 +15,13 @@ import { useEffect, useRef, useState } from "react"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { ThemeToggle } from "@/components/theme-toggle"
+import { SiteHeader } from "@/components/site-header"
+import { OnboardingGuide } from "@/features/settings/onboarding-guide"
 import { useCurrentUser } from "@/hooks/use-current-user"
 
 const NAV = [
   { href: "/week", label: "طرح درس", icon: CalendarRange },
+  { href: "/timetable", label: "برنامه هفتگی", icon: CalendarDays },
   { href: "/grades", label: "کارنامه", icon: GraduationCap },
   { href: "/assistant", label: "دستیار", icon: Sparkles },
   { href: "/settings", label: "تنظیمات", icon: Settings },
@@ -77,35 +79,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 border-b bg-background/80 px-4 backdrop-blur-xl supports-backdrop-filter:bg-background/55 print:hidden">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3">
-          <Link
-            href="/week"
-            className="flex shrink-0 items-center gap-2 rounded-md text-lg font-bold md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:outline-none"
-          >
-            <span className="flex size-9 items-center justify-center overflow-hidden rounded-lg">
-              <Image
-                src="/square.svg"
-                alt="طرحینو"
-                width={36}
-                height={36}
-                priority
-                className="size-9"
-              />
-            </span>
-            <span>طرحینو</span>
-          </Link>
+      <SiteHeader
+        homeHref="/week"
+        hideOnPrint
+        center={
           <nav
             className="absolute inset-x-0 hidden items-center justify-center md:flex"
             aria-label="ناوبری اصلی"
           >
             <HeaderNav />
           </nav>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+        }
+      />
       <main className="flex-1 overflow-x-clip px-4 pt-4 pb-4 md:pb-8">
         {/* Header and nav are static, so only the page body waits on the session. */}
         {status === "authenticated" ? (
@@ -116,6 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               enterDir === -1 && "tab-enter-left"
             )}
           >
+            <OnboardingGuide />
             {children}
           </div>
         ) : (

@@ -28,12 +28,13 @@ export default function GlobalError({
           justifyContent: "center",
           padding: 16,
           fontFamily: "system-ui, Tahoma, sans-serif",
-          background: "#fff",
-          color: "#111",
+          colorScheme: "light dark",
+          background: "light-dark(#fff, #060606)",
+          color: "light-dark(#111, #fafafa)",
         }}
       >
         <div style={{ maxWidth: 28 * 16, textAlign: "center" }}>
-          <Image src="/square.svg" alt="طرحینو" width={64} height={64} />
+          <Image src="/icons/square.svg" alt="طرحینو" width={64} height={64} />
           <p
             style={{
               margin: "20px 0 0",
@@ -45,7 +46,13 @@ export default function GlobalError({
             ۵۰۰
           </p>
           <h1 style={{ margin: "12px 0 0", fontSize: 18 }}>مشکلی پیش آمد</h1>
-          <p style={{ margin: "6px 0 0", fontSize: 14, color: "#555" }}>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: 14,
+              color: "light-dark(#555, #a1a1aa)",
+            }}
+          >
             طرحینو باز نشد. یک بار دیگر تلاش کنید.
           </p>
           <div
@@ -77,9 +84,9 @@ export default function GlobalError({
               href="/week"
               style={{
                 padding: "10px 16px",
-                border: "1px solid #ddd",
+                border: "1px solid light-dark(#ddd, #3f3f46)",
                 borderRadius: 8,
-                color: "#111",
+                color: "inherit",
                 fontSize: 14,
                 textDecoration: "none",
               }}

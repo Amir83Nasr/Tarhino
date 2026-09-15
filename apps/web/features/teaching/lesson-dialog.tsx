@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select"
+import { Textarea } from "@workspace/ui/components/textarea"
 import { toast } from "@workspace/ui/components/sonner"
 
 import { TimeInput } from "@/components/time-input"
@@ -48,19 +49,103 @@ export function LessonDialog({ open, onOpenChange, date, plan = null }: Props) {
     <ResponsiveDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={plan ? "ویرایش درس" : "درس جدید"}
-      description="برای این زنگ چه کاری انجام می‌دهید؟"
+      title={plan ? "شرح این زنگ" : "درس جدید"}
+      description={
+        plan
+          ? "فقط شرح همین زنگ را بنویسید."
+          : "برای این زنگ چه کاری انجام می‌دهید؟"
+      }
     >
       {/* Mounted only while open: fields seed from `plan` without a sync effect. */}
-      {open && (
-        <LessonForm
-          key={plan?.id ?? "new"}
-          date={date}
-          plan={plan}
-          onDone={() => onOpenChange(false)}
-        />
-      )}
+      {open &&
+        (plan ? (
+          <ActivityForm
+            key={plan.id}
+            plan={plan}
+            onDone={() => onOpenChange(false)}
+          />
+        ) : (
+          <LessonForm
+            key="new"
+            date={date}
+            plan={null}
+            onDone={() => onOpenChange(false)}
+          />
+        ))}
     </ResponsiveDialog>
+  )
+}
+
+// ── EXISTING ROW: شرح ONLY ───────────────────────────────
+// Rows are built from the weekly template; class/subject/bell are fixed,
+// so the teacher only writes the شرح here. Multi-line, no other options.
+
+function ActivityForm({
+  plan,
+  onDone,
+}: {
+  plan: LessonPlan
+  onDone: () => void
+}) {
+  const { subjectName, periodLabel } = useLookups()
+  const [activity, setActivity] = useState(plan.activity ?? "")
+
+  const save = useSaveLessonPlan(plan, onDone)
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!activity.trim()) {
+      toast.error("شرح فعالیت را وارد کنید")
+      return
+    }
+
+    const input: LessonPlanInput = {
+      date: plan.date,
+      activity: activity.trim(),
+      class_id: plan.class_id,
+      subject_id: plan.subject_id,
+      period_id: plan.period_id,
+      start_time: plan.start_time?.slice(0, 5) ?? null,
+      end_time: plan.end_time?.slice(0, 5) ?? null,
+      status: plan.status,
+    }
+    save.mutate(input, {
+      onError: (error) =>
+        // ApiError messages are Persian (translated in client.ts); anything
+        // else (browser/network internals) must not leak English into the toast.
+        toast.error(error instanceof ApiError ? error.message : "ذخیره نشد"),
+    })
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        {[periodLabel(plan.period_id), subjectName(plan.subject_id)]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="activity">شرح</Label>
+        {/* No autoFocus: desktop Dialog focuses first field itself;
+            on mobile any autofocus pops the virtual keyboard over the drawer. */}
+        <Textarea
+          id="activity"
+          value={activity}
+          onChange={(e) => setActivity(e.target.value)}
+          placeholder="شرح این زنگ را بنویسید…"
+          rows={5}
+        />
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onDone}>
+          انصراف
+        </Button>
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending ? "در حال ذخیره…" : "ذخیره"}
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }
 
@@ -73,16 +158,17 @@ function LessonForm({
   plan: LessonPlan | null
   onDone: () => void
 }) {
-  const { classes, subjects } = useLookups()
+  const { subjects, classes } = useLookups()
 
   const [activity, setActivity] = useState(plan?.activity ?? "")
   const [date] = useState(dateProp ?? "")
-  const [classId, setClassId] = useState(plan?.class_id ?? "")
+  // Single class: the teacher has only one, so it is preset, not picked.
+  const singleClassId = plan?.class_id ?? classes[0]?.id ?? ""
+  const [classId] = useState(singleClassId)
   const [subjectId, setSubjectId] = useState(plan?.subject_id ?? "")
   const [periodId, setPeriodId] = useState(plan?.period_id ?? "")
 
-  const classItems = classes.map((c) => ({ label: c.name, value: c.id }))
-  // Subjects narrow to the chosen class's links; unlinked picks are rejected
+  // Subjects narrow to the class's links; unlinked picks are rejected
   // server-side with a 422 toast (see submit below).
   const links = useClassSubjects(classId || null)
   const linkedIds =
@@ -90,19 +176,16 @@ function LessonForm({
   const subjectItems = subjects
     .filter((s) => linkedIds === null || linkedIds.has(s.id))
     .map((s) => ({ label: s.name, value: s.id }))
-  // Bells belong to the class: switching class resets a stale period pick.
+  // Bells belong to the class: only this week's shift set is offered.
+  const singleClass = classes.find((c) => c.id === classId)
   const classPeriods = usePeriodsByClass(classId || null)
-  const periodItems = (classPeriods ?? []).map((p) => ({
+  const weekPeriods = (classPeriods ?? []).filter(
+    (p) => !singleClass || p.shift === singleClass.active_shift
+  )
+  const periodItems = weekPeriods.map((p) => ({
     label: p.label,
     value: p.id,
   }))
-
-  function pickClass(id: string) {
-    setClassId(id)
-    // Subjects and bells belong to the class: drop stale picks.
-    setSubjectId("")
-    setPeriodId("")
-  }
   const statusItems = Object.entries(STATUS_LABELS).map(([value, label]) => ({
     label,
     value,
@@ -127,7 +210,7 @@ function LessonForm({
 
   function pickPeriod(id: string) {
     setPeriodId(id)
-    const chosen = (classPeriods ?? []).find((p) => p.id === id)
+    const chosen = weekPeriods.find((p) => p.id === id)
     // Times come from the bell schedule unless the teacher already set them.
     if (chosen && !startTime && !endTime) {
       setStartTime(chosen.start_time.slice(0, 5))
@@ -179,29 +262,6 @@ function LessonForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label>کلاس</Label>
-          <Select
-            items={classItems}
-            value={classId || null}
-            onValueChange={(value) => value && pickClass(value)}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="کلاس…" />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                <SelectLabel>کلاس‌ها</SelectLabel>
-                {classItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <Label>درس</Label>
           <Select

@@ -1,19 +1,15 @@
+import type { Metadata } from "next"
 import {
-  ArrowUp,
   CalendarRange,
   CircleCheck,
   GraduationCap,
   ListChecks,
   LogIn,
-  Mail,
   MonitorSmartphone,
-  Phone,
   Printer,
-  Send,
   Smartphone,
   Sparkles,
 } from "lucide-react"
-import Image from "next/image"
 import Link from "next/link"
 
 import { Button } from "@workspace/ui/components/button"
@@ -25,7 +21,51 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 
-import { ThemeToggle } from "@/components/theme-toggle"
+import { SiteFooter } from "@/components/site-footer"
+import { SiteHeader } from "@/components/site-header"
+import { SITE_DESCRIPTION, SITE_URL } from "@/lib/site"
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: { url: "/" },
+}
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      url: `${SITE_URL}/`,
+      name: "طرحینو",
+      description: SITE_DESCRIPTION,
+      inLanguage: "fa-IR",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "طرحینو",
+      url: `${SITE_URL}/`,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "EducationalApplication",
+      operatingSystem: "Web",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "IRT" },
+      inLanguage: "fa-IR",
+    },
+    {
+      "@type": "Organization",
+      name: "طرحینو",
+      url: `${SITE_URL}/`,
+      logo: `${SITE_URL}/icons/logo.png`,
+      contactPoint: {
+        "@type": "ContactPoint",
+        telephone: "+98-930-685-3363",
+        contactType: "customer service",
+        areaServed: "IR",
+        availableLanguage: "fa",
+      },
+    },
+  ],
+}
 
 const BULLETS = [
   "طرح درس در یک نگاه",
@@ -50,7 +90,7 @@ const STEPS = [
     numeral: "۳",
     icon: Printer,
     title: "چاپ بگیر و برو سر کلاس",
-    description: "خروجی تمیز یک روز یا کل هفته، آماده چاپ و PDF.",
+    description: "خروجی تمیز یک روز یا کل هفته، آماده چاپ و پی‌دی‌اف.",
   },
 ] as const
 
@@ -73,7 +113,7 @@ const FEATURES = [
   {
     icon: Printer,
     title: "چاپ تمیز",
-    description: "خروجی مرتب یک روز یا کل هفته، آماده چاپ و PDF.",
+    description: "خروجی مرتب یک روز یا کل هفته، آماده چاپ و پی‌دی‌اف.",
   },
   {
     icon: Smartphone,
@@ -95,6 +135,10 @@ export default function Page() {
 
   return (
     <div id="top" className="relative">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <a
         href="#main-content"
         className="inset-s-0 fixed top-0 z-9999 -translate-y-full rounded-b-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-all focus:translate-y-0"
@@ -102,25 +146,14 @@ export default function Page() {
         رفتن به محتوای اصلی
       </a>
       <div className="flex min-h-svh flex-col">
-        <header className="fixed inset-x-0 top-0 z-40 border-b bg-background/80 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4">
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-lg font-bold"
+        <SiteHeader
+          homeHref="/"
+          fixed
+          center={
+            <nav
+              aria-label="ناوبری اصلی"
+              className="hidden items-center gap-1 md:flex"
             >
-              <span className="flex size-9 items-center justify-center overflow-hidden rounded-lg">
-                <Image
-                  src="/square.svg"
-                  alt="طرحینو"
-                  width={36}
-                  height={36}
-                  priority
-                  className="size-9"
-                />
-              </span>
-              <span>طرحینو</span>
-            </Link>
-            <nav className="hidden items-center gap-1 md:flex">
               <Button asChild variant="ghost" size="sm" className="md:h-8">
                 <Link href="/">خانه</Link>
               </Button>
@@ -133,17 +166,19 @@ export default function Page() {
               <Button asChild variant="ghost" size="sm" className="md:h-8">
                 <a href="#contact">ارتباط با ما</a>
               </Button>
-            </nav>
-            <span className="flex shrink-0 items-center gap-1">
-              <ThemeToggle />
-              <Button asChild size="xs" className="hidden md:inline-flex">
-                <Link href={panelHref} replace>
-                  ورود به پنل کاربری
-                </Link>
+              <Button asChild variant="ghost" size="sm" className="md:h-8">
+                <Link href="/blog">بلاگ</Link>
               </Button>
-            </span>
-          </div>
-        </header>
+            </nav>
+          }
+          actions={
+            <Button asChild size="xs" className="hidden md:inline-flex">
+              <Link href={panelHref} replace>
+                ورود به پنل کاربری
+              </Link>
+            </Button>
+          }
+        />
 
         <main id="main-content" className="relative flex-1 pt-16">
           <section>
@@ -309,96 +344,7 @@ export default function Page() {
           </section>
         </main>
 
-        <footer id="contact" className="border-t bg-background">
-          <div className="mx-auto grid w-full max-w-7xl gap-x-6 gap-y-8 px-4 py-10 md:grid-cols-4">
-            <div className="flex flex-col gap-3">
-              <span className="text-lg font-bold">طرحینو</span>
-              <p className="text-sm leading-6 text-muted-foreground">
-                طرح درس، کارنامه و دستیار معلم؛ یک‌جا، بدون کاغذبازی.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">لینک‌های سریع</p>
-              <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
-                <li>
-                  <Link href="/" className="hover:text-foreground">
-                    خانه
-                  </Link>
-                </li>
-                <li>
-                  <a href="#how-it-works" className="hover:text-foreground">
-                    چطور کار می‌کند
-                  </a>
-                </li>
-                <li>
-                  <a href="#why" className="hover:text-foreground">
-                    چرا طرحینو
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">ارتباط با ما</p>
-              <ul className="flex flex-col gap-1.5 text-sm text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <Send className="size-4 shrink-0" />
-                  <span>بله:</span>
-                  <a
-                    href="https://ble.ir/Amir83Nasr"
-                    target="_blank"
-                    rel="noreferrer"
-                    dir="ltr"
-                    className="text-foreground"
-                  >
-                    Amir83Nasr
-                  </a>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Phone className="size-4 shrink-0" />
-                  <span>تلفن:</span>
-                  <a href="tel:+989306853363" className="text-foreground">
-                    ۰۹۳۰۶۸۵۳۳۶۳
-                  </a>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Mail className="size-4 shrink-0" />
-                  <span>ایمیل:</span>
-                  <a
-                    href="mailto:amirhossein.nasrollahi.main@gmail.com"
-                    dir="ltr"
-                    className="text-foreground"
-                  >
-                    amirhossein.nasrollahi.main@gmail.com
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">انتقادها و پیشنهادها</p>
-              <p className="text-sm leading-6 text-muted-foreground">
-                نظر شما طرحینو را بهتر می‌کند؛ از همین راه‌های ارتباطی بفرستید.
-              </p>
-            </div>
-          </div>
-          <div className="pb-6">
-            <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-              <p className="text-xs text-muted-foreground">
-                تمامی حقوق مادی و معنوی این وبسایت متعلق به توپ‌سِت می‌باشد.
-              </p>
-              <Button
-                asChild
-                variant="ghost"
-                size="xs"
-                className="mx-auto text-muted-foreground sm:mx-0"
-              >
-                <a href="#top">
-                  <ArrowUp className="size-3.5" />
-                  بازگشت به بالا
-                </a>
-              </Button>
-            </div>
-          </div>
-        </footer>
+        <SiteFooter />
       </div>
     </div>
   )

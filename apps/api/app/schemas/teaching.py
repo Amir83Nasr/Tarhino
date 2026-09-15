@@ -42,9 +42,11 @@ class SchoolOut(SchoolFields, _ScopedOut):
 
 class ClassFields(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    grade: str | None = Field(default=None, max_length=100)
+    grade: str | None = Field(default=None, min_length=1, max_length=100)
     color: str | None = Field(default=None, max_length=32)
     school_id: uuid.UUID
+    shift: str = Field(default="morning", min_length=1, max_length=16)
+    shift_anchor: dt.date | None = None
 
 
 class ClassCreate(ClassFields):
@@ -56,10 +58,13 @@ class ClassUpdate(BaseModel):
     grade: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=32)
     school_id: uuid.UUID | None = None
+    shift: str | None = Field(default=None, min_length=1, max_length=16)
+    shift_anchor: dt.date | None = None
 
 
 class ClassOut(ClassFields, _ScopedOut):
-    pass
+    # Bell set active this week (same as shift, unless rotating alternates).
+    active_shift: str = "morning"
 
 
 # ── STUDENTS ───────────────────────────────────────────────
@@ -121,56 +126,9 @@ class AssessmentOut(AssessmentFields, _ScopedOut):
     order_index: int
 
 
-# ── GRADE SCALES (per-subject descriptive bands) ───────────
+# ── GRADES ─────────────────────────────────────────────────
 
 MAX_GRADE = 20
-
-
-class GradeScaleFields(BaseModel):
-    subject_id: uuid.UUID
-    excellent_min: float = Field(default=18, ge=0, le=MAX_GRADE)
-    good_min: float = Field(default=15, ge=0, le=MAX_GRADE)
-    pass_min: float = Field(default=10, ge=0, le=MAX_GRADE)
-    excellent_label: str = Field(default="خیلی خوب", min_length=1, max_length=100)
-    good_label: str = Field(default="خوب", min_length=1, max_length=100)
-    fair_label: str = Field(default="قابل قبول", min_length=1, max_length=100)
-    needs_label: str = Field(default="نیازمند تلاش بیشتر", min_length=1, max_length=100)
-
-    @model_validator(mode="after")
-    def thresholds_descend(self) -> "GradeScaleFields":
-        if not (self.pass_min < self.good_min < self.excellent_min):
-            raise ValueError("thresholds must descend: pass < good < excellent")
-        return self
-
-
-class GradeScaleCreate(GradeScaleFields):
-    pass
-
-
-class GradeScaleUpdate(BaseModel):
-    excellent_min: float | None = Field(default=None, ge=0, le=MAX_GRADE)
-    good_min: float | None = Field(default=None, ge=0, le=MAX_GRADE)
-    pass_min: float | None = Field(default=None, ge=0, le=MAX_GRADE)
-    excellent_label: str | None = Field(default=None, min_length=1, max_length=100)
-    good_label: str | None = Field(default=None, min_length=1, max_length=100)
-    fair_label: str | None = Field(default=None, min_length=1, max_length=100)
-    needs_label: str | None = Field(default=None, min_length=1, max_length=100)
-
-    @model_validator(mode="after")
-    def thresholds_descend(self) -> "GradeScaleUpdate":
-        mins = [self.pass_min, self.good_min, self.excellent_min]
-        if all(m is not None for m in mins) and not (
-            self.pass_min < self.good_min < self.excellent_min  # type: ignore[operator]
-        ):
-            raise ValueError("thresholds must descend: pass < good < excellent")
-        return self
-
-
-class GradeScaleOut(GradeScaleFields, _ScopedOut):
-    pass
-
-
-# ── GRADES ─────────────────────────────────────────────────
 
 
 class GradeFields(BaseModel):
@@ -190,15 +148,15 @@ class GradeUpdate(BaseModel):
 
 
 class GradeOut(GradeFields, _ScopedOut):
-    # Server-computed from the subject's scale at write time; never user input.
+    # Server-computed from the default bands at write time; never user input.
     label: str = ""
 
 
 class GradeUpsert(BaseModel):
     student_id: uuid.UUID
     assessment_id: uuid.UUID
-    # Numeric mode sends value; descriptive mode sends level (one of the
-    # subject scale's 4 labels). The server enforces which one applies.
+    # Numeric mode sends value; descriptive mode sends level (one of the 4
+    # default labels). The server enforces which one applies.
     value: float | None = Field(default=None, ge=0, le=MAX_GRADE)
     level: str | None = Field(default=None, min_length=1, max_length=100)
 
@@ -248,6 +206,7 @@ class PeriodFields(BaseModel):
     label: str = Field(min_length=1, max_length=100)
     start_time: dt.time
     end_time: dt.time
+    shift: str = Field(default="morning", min_length=1, max_length=16)
 
     @model_validator(mode="after")
     def end_after_start(self) -> "PeriodFields":
@@ -266,6 +225,7 @@ class PeriodUpdate(BaseModel):
     start_time: dt.time | None = None
     end_time: dt.time | None = None
     order_index: int | None = None
+    shift: str | None = Field(default=None, min_length=1, max_length=16)
 
     @model_validator(mode="after")
     def end_after_start(self) -> "PeriodUpdate":
@@ -292,13 +252,16 @@ class LessonPlanFields(BaseModel):
     period_id: uuid.UUID
     start_time: dt.time | None = None
     end_time: dt.time | None = None
-    activity: str = Field(min_length=1, max_length=2000)
+    # Empty allowed: weekly-template ensure-week creates rows with blank activity
+    # for the teacher to fill later; manual creation still requires it (see
+    # LessonPlanCreate below).
+    activity: str = Field(default="", max_length=2000)
     notes: str = Field(default="", max_length=2000)
     status: LessonStatus = "planned"
 
 
 class LessonPlanCreate(LessonPlanFields):
-    pass
+    activity: str = Field(min_length=1, max_length=2000)
 
 
 class LessonPlanUpdate(BaseModel):
@@ -308,13 +271,68 @@ class LessonPlanUpdate(BaseModel):
     period_id: uuid.UUID | None = None
     start_time: dt.time | None = None
     end_time: dt.time | None = None
-    activity: str | None = Field(default=None, min_length=1, max_length=2000)
+    activity: str | None = Field(default=None, max_length=2000)
     notes: str | None = Field(default=None, max_length=2000)
     status: LessonStatus | None = None
 
 
 class LessonPlanOut(LessonPlanFields, _ScopedOut):
     pass
+
+
+class WeekEnsure(BaseModel):
+    """Auto-fill target: one Saturday-first week of one owned class."""
+
+    class_id: uuid.UUID
+    week_start: dt.date
+
+
+# ── WEEKLY SLOTS (fixed timetable template) ──────────────
+
+# Saturday-first: 0 = شنبه … 4 = چهارشنبه. Thursday/Friday are school
+# weekends and never part of the template.
+MIN_WEEKDAY = 0
+MAX_WEEKDAY = 4
+
+
+class WeeklySlotFields(BaseModel):
+    weekday: int = Field(ge=MIN_WEEKDAY, le=MAX_WEEKDAY)
+    class_id: uuid.UUID
+    subject_id: uuid.UUID
+    period_id: uuid.UUID
+
+
+class WeeklySlotCreate(WeeklySlotFields):
+    pass
+
+
+class WeeklySlotUpdate(BaseModel):
+    weekday: int | None = Field(default=None, ge=MIN_WEEKDAY, le=MAX_WEEKDAY)
+    class_id: uuid.UUID | None = None
+    subject_id: uuid.UUID | None = None
+    period_id: uuid.UUID | None = None
+
+
+class WeeklySlotOut(WeeklySlotFields, _ScopedOut):
+    pass
+
+
+# ── ELEMENTARY SETUP ─────────────────────────────────────────
+# One call for grades 1-6: school name + grade + shift derive the teacher's
+# single school/class, its subjects and both 5-bell sets server-side.
+
+
+class ElementarySetupCreate(BaseModel):
+    school_name: str = Field(min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    grade: str = Field(min_length=1, max_length=100)
+    shift: str = Field(default="morning", min_length=1, max_length=16)
+
+
+class ElementarySetupOut(ClassOut):
+    school: SchoolOut
+    subjects: list[SubjectOut]
+    periods: list[PeriodOut]
 
 
 # ── HOLIDAYS ───────────────────────────────────────────────

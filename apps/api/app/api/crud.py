@@ -19,6 +19,9 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 # Raises HTTPException when the payload references a row the caller does not own.
 ValidateFn = Callable[[AsyncSession, uuid.UUID, dict[str, Any], uuid.UUID | None], Awaitable[None]]
 
+# Guard against a second row for single-row entities (one school/class/teacher).
+SingleFn = Callable[[AsyncSession, uuid.UUID], Awaitable[bool]]
+
 
 def build_crud_router[M: UserScoped](
     *,
@@ -31,6 +34,7 @@ def build_crud_router[M: UserScoped](
     extra_where: Callable[[uuid.UUID], ColumnElement[bool]] | None = None,
     validate: ValidateFn | None = None,
     date_column: Any = None,
+    reject_second: SingleFn | None = None,
 ) -> APIRouter:
     """Wire standard list/create/patch/delete routes for a user-scoped entity.
 
@@ -76,6 +80,8 @@ def build_crud_router[M: UserScoped](
     ) -> Any:
         data = payload.model_dump()
 
+        if reject_second is not None and await reject_second(session, user.id):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Only one allowed")
         if validate is not None:
             await validate(session, user.id, data, None)
         row = model(id=uuid.uuid4(), user_id=user.id, **data)

@@ -1,3 +1,4 @@
+import datetime as dt
 import uuid
 from typing import Annotated, Any
 
@@ -21,12 +22,11 @@ from app.models.teaching import (
     School,
     Student,
     Subject,
-    SubjectGradeScale,
     TeachingClass,
+    WeeklySlot,
 )
 from app.reports.grades import (
     DEFAULT_SCALE,
-    GradeScaleBands,
     describe_level,
     value_for_level_label,
 )
@@ -39,11 +39,10 @@ from app.schemas.teaching import (
     ClassSubjectCreate,
     ClassSubjectOut,
     ClassUpdate,
+    ElementarySetupCreate,
+    ElementarySetupOut,
     GradeCreate,
     GradeOut,
-    GradeScaleCreate,
-    GradeScaleOut,
-    GradeScaleUpdate,
     GradeUpdate,
     GradeUpsert,
     HolidayCreate,
@@ -65,6 +64,18 @@ from app.schemas.teaching import (
     SubjectCreate,
     SubjectOut,
     SubjectUpdate,
+    WeekEnsure,
+    WeeklySlotCreate,
+    WeeklySlotOut,
+    WeeklySlotUpdate,
+)
+from app.teaching.elementary import (
+    _DEFAULT_CLASS_NAME,
+    ELEMENTARY_GRADES,
+    ELEMENTARY_SUBJECTS,
+    SHIFT_PERIODS,
+    SHIFTS,
+    saturday_of,
 )
 
 # ── OWNERSHIP VALIDATION ───────────────────────────────────
@@ -77,6 +88,21 @@ _REF_FIELDS: dict[str, type] = {
     "student_id": Student,
     "assessment_id": Assessment,
 }
+
+
+async def _has_row(session: AsyncSession, model: type, user_id: uuid.UUID) -> bool:
+    """True when the teacher already owns a row: single school/class guard."""
+    return (
+        await session.scalar(select(model.id).where(model.user_id == user_id).limit(1)) is not None
+    )
+
+
+async def _has_school(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    return await _has_row(session, School, user_id)
+
+
+async def _has_class(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    return await _has_row(session, TeachingClass, user_id)
 
 
 async def _validate_refs(
@@ -166,6 +192,42 @@ async def _validate_plan_link(
             )
 
 
+async def _validate_slot_link(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    data: dict[str, Any],
+    existing_id: uuid.UUID | None,
+) -> None:
+    """Ownership check, then enforce the same strict tree as lesson plans.
+
+    Every slot needs a linked class+subject pair plus a period that belongs to
+    the same class. On PATCH the payload may carry only one side, so merge with
+    the stored row before checking (mirrors _validate_plan_link).
+    """
+    await _validate_refs(session, user_id, data, existing_id)
+    if existing_id is not None:
+        _reject_null(data, "class_id", "subject_id", "period_id")
+    class_id = data.get("class_id")
+    subject_id = data.get("subject_id")
+    period_id = data.get("period_id")
+    if existing_id is not None and (class_id is None or subject_id is None or period_id is None):
+        row = await get_scoped(session, WeeklySlot, existing_id, user_id)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+        class_id = class_id if class_id is not None else row.class_id
+        subject_id = subject_id if subject_id is not None else row.subject_id
+        period_id = period_id if period_id is not None else row.period_id
+    if class_id is not None and subject_id is not None:
+        await _require_link(session, user_id, class_id, subject_id)
+    if class_id is not None and period_id is not None:
+        period = await get_scoped(session, Period, period_id, user_id)
+        if period is None or period.class_id != class_id:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Unknown class_id/period_id pair",
+            )
+
+
 # ── ROUTERS ────────────────────────────────────────────────
 
 schools = build_crud_router(
@@ -175,6 +237,7 @@ schools = build_crud_router(
     out_schema=SchoolOut,
     prefix="/schools",
     tag="schools",
+    reject_second=_has_school,
 )
 
 classes = build_crud_router(
@@ -185,6 +248,7 @@ classes = build_crud_router(
     prefix="/classes",
     tag="classes",
     validate=_validate_refs,
+    reject_second=_has_class,
 )
 
 students = build_crud_router(
@@ -269,11 +333,11 @@ async def _validate_grade(
     data: dict[str, Any],
     existing_id: uuid.UUID | None,
 ) -> None:
-    """Ownership check, then stamp the subject-scale label on every write.
+    """Ownership check, then stamp the default-band label on every write.
 
     The generic CRUD path must label rows exactly like /upsert: resolve the
     value + assessment (merging stored row on PATCH) and describe it under
-    the assessment's subject scale.
+    the default bands.
     """
     await _validate_refs(session, user_id, data, existing_id)
     assessment_id = data.get("assessment_id")
@@ -289,8 +353,7 @@ async def _validate_grade(
     assessment = await get_scoped(session, Assessment, assessment_id, user_id)
     if assessment is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown assessment_id")
-    scale_row = await _scale_for_subject(session, user_id, assessment.subject_id)
-    data["label"] = describe_level(float(value), _scale_bands(scale_row))
+    data["label"] = describe_level(float(value), DEFAULT_SCALE)
 
 
 grades = build_crud_router(
@@ -303,71 +366,6 @@ grades = build_crud_router(
     validate=_validate_grade,
 )
 
-
-def _scale_bands(row: SubjectGradeScale | None) -> GradeScaleBands:
-    """DB row → pure bands; missing row means the teacher never customized."""
-    if row is None:
-        return DEFAULT_SCALE
-    return GradeScaleBands(
-        excellent_min=float(row.excellent_min),
-        good_min=float(row.good_min),
-        pass_min=float(row.pass_min),
-        excellent_label=row.excellent_label,
-        good_label=row.good_label,
-        fair_label=row.fair_label,
-        needs_label=row.needs_label,
-    )
-
-
-async def _scale_for_subject(
-    session: AsyncSession, user_id: uuid.UUID, subject_id: uuid.UUID
-) -> SubjectGradeScale | None:
-    return await session.scalar(
-        select(SubjectGradeScale).where(
-            SubjectGradeScale.user_id == user_id,
-            SubjectGradeScale.subject_id == subject_id,
-        )
-    )
-
-
-async def _validate_scale(
-    session: AsyncSession,
-    user_id: uuid.UUID,
-    data: dict[str, Any],
-    _existing_id: uuid.UUID | None,
-) -> None:
-    """Ownership check on subject_id; PATCH merges thresholds before ordering check."""
-    await _validate_refs(session, user_id, data, _existing_id)
-    if _existing_id is None and data.get("subject_id") is not None:
-        dup = await _scale_for_subject(session, user_id, data["subject_id"])
-        if dup is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Scale already exists for this subject")
-    if _existing_id is not None:
-        row = await get_scoped(session, SubjectGradeScale, _existing_id, user_id)
-        if row is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-        merged = {
-            "excellent_min": data.get("excellent_min", float(row.excellent_min)),
-            "good_min": data.get("good_min", float(row.good_min)),
-            "pass_min": data.get("pass_min", float(row.pass_min)),
-        }
-        mins = [float(merged[k]) for k in ("pass_min", "good_min", "excellent_min")]
-        if not (mins[0] < mins[1] < mins[2]):
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "thresholds must descend: pass < good < excellent",
-            )
-
-
-grade_scales = build_crud_router(
-    model=SubjectGradeScale,
-    create_schema=GradeScaleCreate,
-    update_schema=GradeScaleUpdate,
-    out_schema=GradeScaleOut,
-    prefix="/grade-scales",
-    tag="grade-scales",
-    validate=_validate_scale,
-)
 
 subjects = build_crud_router(
     model=Subject,
@@ -419,6 +417,16 @@ holidays = build_crud_router(
     tag="holidays",
     extra_where=lambda _user_id: Holiday.user_id.is_(None),
     date_column=Holiday.date,
+)
+
+weekly_slots = build_crud_router(
+    model=WeeklySlot,
+    create_schema=WeeklySlotCreate,
+    update_schema=WeeklySlotUpdate,
+    out_schema=WeeklySlotOut,
+    prefix="/weekly-slots",
+    tag="weekly-slots",
+    validate=_validate_slot_link,
 )
 
 
@@ -546,24 +554,16 @@ async def upsert_grade(
             Grade.assessment_id == payload.assessment_id,
         )
     )
-    scale = _scale_bands(await _scale_for_subject(session, user.id, assessment.subject_id))
-    # Numeric mode takes value (label derived); descriptive mode takes level
-    # (value mapped). Each mode rejects the other mode's field.
-    if user.grading_mode == "descriptive":
-        if payload.level is None or payload.value is not None:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY, "Descriptive mode takes level"
-            )
-        try:
-            value = value_for_level_label(payload.level, scale)
-        except ValueError:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown level") from None
-        label = payload.level
-    else:
-        if payload.value is None or payload.level is not None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Numeric mode takes value")
-        value = float(payload.value)
-        label = describe_level(value, scale)
+    scale = DEFAULT_SCALE
+    # Descriptive-only: the teacher picks a level, the server maps it to the
+    # stored averaging anchor. Numeric input is rejected.
+    if payload.level is None or payload.value is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Descriptive mode takes level")
+    try:
+        value = value_for_level_label(payload.level, scale)
+    except ValueError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown level") from None
+    label = payload.level
     if existing is None:
         existing = Grade(
             id=uuid.uuid4(),
@@ -701,65 +701,275 @@ async def class_subjects_by_subject(
     )
 
 
-@grade_scales.get("/by-subject/{subject_id}", response_model=GradeScaleOut)
-async def grade_scale_by_subject(
-    subject_id: uuid.UUID,
+@weekly_slots.get("/by-class/{class_id}", response_model=list[WeeklySlotOut])
+async def weekly_slots_by_class(
+    class_id: uuid.UUID,
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> SubjectGradeScale:
-    """The subject's scale, or a transient default when never customized.
-
-    Not persisted on read: the row is created on the first PATCH/POST instead,
-    so listing subjects never writes.
-    """
-    subject = await get_scoped(session, Subject, subject_id, user.id)
-    if subject is None:
+) -> list[WeeklySlot]:
+    teaching_class = await get_scoped(session, TeachingClass, class_id, user.id)
+    if teaching_class is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    row = await _scale_for_subject(session, user.id, subject_id)
-    if row is not None:
-        return row
-    return SubjectGradeScale(
-        id=uuid.uuid4(),
-        user_id=user.id,
-        subject_id=subject_id,
-        excellent_min=DEFAULT_SCALE.excellent_min,
-        good_min=DEFAULT_SCALE.good_min,
-        pass_min=DEFAULT_SCALE.pass_min,
-        excellent_label=DEFAULT_SCALE.excellent_label,
-        good_label=DEFAULT_SCALE.good_label,
-        fair_label=DEFAULT_SCALE.fair_label,
-        needs_label=DEFAULT_SCALE.needs_label,
+    return list(
+        await session.scalars(
+            select(WeeklySlot)
+            .where(WeeklySlot.user_id == user.id, WeeklySlot.class_id == class_id)
+            .order_by(WeeklySlot.weekday)
+        )
     )
 
 
-@grade_scales.post("/by-subject/{subject_id}/relabel", response_model=int)
-async def relabel_subject_grades(
-    subject_id: uuid.UUID,
+@lesson_plans.post("/ensure-week", response_model=BulkResult)
+async def ensure_week(
+    payload: WeekEnsure,
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> int:
-    """Recompute stored grade labels from the subject's current scale."""
-    subject = await get_scoped(session, Subject, subject_id, user.id)
-    if subject is None:
+) -> BulkResult:
+    """Auto-fill one Saturday-first week from the class template.
+
+    Called by the week view on every visit: creates missing rows, prunes
+    blank rows whose template cell is gone, skips holidays, and keeps
+    teacher edits (non-blank activity or end-time set) untouched. Pruned ids
+    come back in `errors` with detail "pruned" so the client can evict them.
+    """
+    from app.teaching.elementary import effective_shift
+
+    teaching_class = await get_scoped(session, TeachingClass, payload.class_id, user.id)
+    if teaching_class is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    bands = _scale_bands(await _scale_for_subject(session, user.id, subject_id))
-    rows = list(
+    # Saturday-first index: Python Monday=0 -> Saturday=5, Friday=4.
+    if (payload.week_start.weekday() + 2) % 7 != 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "week_start must be Saturday")
+    slots = list(
         await session.scalars(
-            select(Grade).where(
-                Grade.user_id == user.id,
-                Grade.assessment_id.in_(
-                    select(Assessment.id).where(
-                        Assessment.user_id == user.id,
-                        Assessment.subject_id == subject_id,
-                    )
-                ),
+            select(WeeklySlot).where(
+                WeeklySlot.user_id == user.id,
+                WeeklySlot.class_id == payload.class_id,
             )
         )
     )
-    for row in rows:
-        row.label = describe_level(float(row.value), bands)
+    shift = effective_shift(
+        teaching_class.shift or "morning", teaching_class.shift_anchor, payload.week_start
+    )
+    period_shift = {
+        p.id: p.shift
+        for p in await session.scalars(
+            select(Period).where(
+                Period.user_id == user.id,
+                Period.class_id == payload.class_id,
+            )
+        )
+    }
+    wanted = {
+        (payload.week_start + dt.timedelta(days=slot.weekday), str(slot.period_id))
+        for slot in slots
+        if period_shift.get(slot.period_id, shift) == shift
+    }
+    slot_by_cell = {
+        (payload.week_start + dt.timedelta(days=slot.weekday), str(slot.period_id)): slot
+        for slot in slots
+        if period_shift.get(slot.period_id, shift) == shift
+    }
+    week_end = payload.week_start + dt.timedelta(days=6)
+    plans = list(
+        await session.scalars(
+            select(LessonPlan).where(
+                LessonPlan.user_id == user.id,
+                LessonPlan.class_id == payload.class_id,
+                LessonPlan.date >= payload.week_start,
+                LessonPlan.date <= week_end,
+            )
+        )
+    )
+    holidays = set(
+        await session.scalars(
+            select(Holiday.date).where(
+                (Holiday.user_id == user.id) | Holiday.user_id.is_(None),
+                Holiday.date >= payload.week_start,
+                Holiday.date <= week_end,
+            )
+        )
+    )
+    have = {(plan.date, str(plan.period_id)) for plan in plans}
+    created: list[LessonPlan] = []
+    errors: list[BulkError] = []
+    for day, period_key in sorted(wanted - have, key=lambda cell: (cell[0].isoformat(), cell[1])):
+        if day in holidays:
+            continue
+        slot = slot_by_cell[(day, period_key)]
+        data = {
+            "date": day,
+            "class_id": slot.class_id,
+            "subject_id": slot.subject_id,
+            "period_id": slot.period_id,
+            # Blank شرح: the teacher fills it per bell from the week view.
+            "activity": "",
+            "notes": "",
+            "status": "planned",
+        }
+        try:
+            await _validate_plan_link(session, user.id, dict(data), None)
+        except HTTPException:
+            continue
+        try:
+            async with session.begin_nested():
+                row = LessonPlan(id=uuid.uuid4(), user_id=user.id, **data)
+                session.add(row)
+                await session.flush()
+        except IntegrityError:
+            continue
+        created.append(row)
+    # Blank rows whose template cell disappeared are stale template copies:
+    # prune them. Teacher-touched rows (شرح or times) are never blank.
+    for plan in plans:
+        if (plan.date, str(plan.period_id)) in wanted:
+            continue
+        if (plan.activity or "").strip():
+            continue
+        if plan.start_time is not None or plan.end_time is not None:
+            continue
+        errors.append(BulkError(index=-1, detail=f"pruned:{plan.id}"))
+        await session.delete(plan)
     await session.commit()
-    return len(rows)
+    for row in created:
+        await session.refresh(row)
+    return BulkResult(
+        created=[LessonPlanOut.model_validate(r) for r in created],
+        errors=errors,
+    )
+
+
+@classes.post("/elementary-setup", response_model=ElementarySetupOut)
+async def elementary_setup(
+    payload: ElementarySetupCreate,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any]:
+    """One call for an elementary teacher: single school + class upsert.
+
+    Grade/shift pick the seed rows server-side; everything stays editable in
+    settings afterwards. Re-runs update the existing rows instead of creating
+    new ones. Seeds both bell sets (5 morning + 5 afternoon); fixed shifts show
+    their own set, rotating alternates weekly.
+    """
+    from datetime import UTC, datetime
+    from datetime import time as _time
+
+    today = datetime.now(UTC).date()
+
+    if payload.grade not in ELEMENTARY_GRADES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown grade")
+    if payload.shift not in SHIFTS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown shift")
+    school = await session.scalar(
+        select(School).where(School.user_id == user.id).order_by(School.updated_at).limit(1)
+    )
+    if school is None:
+        school = School(id=uuid.uuid4(), user_id=user.id, name=payload.school_name)
+        session.add(school)
+        await session.flush()
+    elif school.name != payload.school_name:
+        school.name = payload.school_name
+    teaching_class = await session.scalar(
+        select(TeachingClass)
+        .where(TeachingClass.user_id == user.id)
+        .order_by(TeachingClass.updated_at)
+        .limit(1)
+    )
+    if teaching_class is None:
+        teaching_class = TeachingClass(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            school_id=school.id,
+            name=payload.name or _DEFAULT_CLASS_NAME[payload.grade],
+            grade=payload.grade,
+            shift=payload.shift,
+            shift_anchor=saturday_of(today) if payload.shift == "rotating" else None,
+        )
+        session.add(teaching_class)
+        await session.flush()
+    else:
+        teaching_class.school_id = school.id
+        teaching_class.name = payload.name or _DEFAULT_CLASS_NAME[payload.grade]
+        teaching_class.grade = payload.grade
+        teaching_class.shift = payload.shift
+        teaching_class.shift_anchor = (
+            teaching_class.shift_anchor or saturday_of(today)
+            if payload.shift == "rotating"
+            else None
+        )
+    subject_names = ELEMENTARY_SUBJECTS[payload.grade]
+    existing = list(
+        await session.scalars(
+            select(Subject).where(
+                Subject.user_id == user.id,
+                Subject.name.in_(subject_names),
+            )
+        )
+    )
+    by_name = {row.name: row for row in existing}
+    subjects: list[Subject] = []
+    for name in subject_names:
+        row = by_name.get(name)
+        if row is None:
+            row = Subject(id=uuid.uuid4(), user_id=user.id, name=name)
+            session.add(row)
+            by_name[name] = row
+        subjects.append(row)
+    await session.flush()
+    linked_ids = set(
+        await session.scalars(
+            select(ClassSubject.subject_id).where(
+                ClassSubject.user_id == user.id,
+                ClassSubject.class_id == teaching_class.id,
+            )
+        )
+    )
+    session.add_all(
+        ClassSubject(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            class_id=teaching_class.id,
+            subject_id=row.id,
+        )
+        for row in subjects
+        if row.id not in linked_ids
+    )
+    existing_periods = list(
+        await session.scalars(
+            select(Period).where(
+                Period.user_id == user.id,
+                Period.class_id == teaching_class.id,
+            )
+        )
+    )
+    by_set = {(p.shift or "morning", p.order_index): p for p in existing_periods}
+    period_rows: list[Period] = []
+    for bell_shift, bells in SHIFT_PERIODS.items():
+        for index, (label, start, end) in enumerate(bells):
+            row = by_set.get((bell_shift, index))
+            if row is None:
+                row = Period(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    class_id=teaching_class.id,
+                    label=label,
+                    start_time=_time.fromisoformat(start),
+                    end_time=_time.fromisoformat(end),
+                    order_index=index,
+                    shift=bell_shift,
+                )
+                session.add(row)
+            period_rows.append(row)
+    await session.commit()
+    for row in (teaching_class, school, *subjects, *period_rows):
+        await session.refresh(row)
+    return {
+        **ClassOut.model_validate(teaching_class).model_dump(),
+        "subjects": [SubjectOut.model_validate(s).model_dump(mode="json") for s in subjects],
+        "periods": [PeriodOut.model_validate(p).model_dump(mode="json") for p in period_rows],
+        "school": SchoolOut.model_validate(school).model_dump(mode="json"),
+    }
 
 
 all_routers: list[APIRouter] = [
@@ -770,8 +980,8 @@ all_routers: list[APIRouter] = [
     class_subjects,
     assessments,
     grades,
-    grade_scales,
     periods,
     lesson_plans,
+    weekly_slots,
     holidays,
 ]

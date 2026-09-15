@@ -3,13 +3,12 @@
 import {
   CalendarDays,
   CalendarOff,
-  CalendarRange,
   ChevronLeft,
   ChevronRight,
   FileDown,
-  Plus,
+  FileSpreadsheet,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 
 import { Button } from "@workspace/ui/components/button"
@@ -19,13 +18,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
-import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 import { cn } from "@workspace/ui/lib/utils"
+import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 
 import { useQueryClient } from "@tanstack/react-query"
-import { useEffect } from "react"
-
-import { LessonCard, LessonCardSkeleton } from "@/features/teaching/lesson-card"
 
 // The dialog (form + Jalali picker + selects) loads on first open, not with
 // the page: week renders and navigates without carrying its weight.
@@ -34,11 +30,11 @@ const LessonDialog = dynamic(
   { ssr: false }
 )
 import { downloadSchedulePdf } from "@/features/reports/api"
+import { exportLessonPlans } from "@/features/excel/import-export"
 import {
   LessonTable,
   LessonTableSkeleton,
-  ViewToggle,
-  useLessonView,
+  sortPlansByPeriod,
 } from "@/features/teaching/lesson-table"
 import { toast } from "@workspace/ui/components/sonner"
 import {
@@ -47,12 +43,10 @@ import {
   useLessonPlans,
   useLookups,
 } from "@/features/teaching/hooks"
+import { useEnsureWeek } from "@/features/timetable/hooks"
 import {
   addDays,
-  formatNumericDate,
   formatShortDate,
-  formatTime,
-  fromISODate,
   isSameDay,
   isSchoolWeekend,
   monthName,
@@ -71,26 +65,46 @@ export default function WeekPage() {
   const [selected, setSelected] = useState(() => new Date())
   const [editing, setEditing] = useState<LessonPlan | null>(null)
   const [open, setOpen] = useState(false)
-  const [mode, setMode] = useLessonView()
-  const [printScope, setPrintScope] = useState<"day" | "week">("week")
   const [pdfOpen, setPdfOpen] = useState(false)
   const [serverPdfBusy, setServerPdfBusy] = useState(false)
+  const [excelBusy, setExcelBusy] = useState(false)
 
-  // Server PDF (WeasyPrint, same A4/IRANYekanX style as other reports) for the
-  // visible week. Browser print stays for single-day output.
+  // Single class: exports target it directly, no picker.
+  const { classes } = useLookups()
+  const singleClassId = classes?.[0]?.id ?? null
+
+  const days = weekDays(anchor)
+  const from = toISODate(days[0] ?? anchor)
+  const to = toISODate(days[6] ?? anchor)
+  const selectedIso = toISODate(selected)
+
+  // Server PDF: the whole visible week, one A4 page, class header included.
   async function serverWeekPdf() {
+    if (!singleClassId) {
+      toast.error("اول از تنظیمات کلاس بسازید")
+      return
+    }
     setServerPdfBusy(true)
     try {
-      const days = weekDays(anchor)
-      await downloadSchedulePdf(
-        toISODate(days[0] ?? anchor),
-        toISODate(days[6] ?? anchor)
-      )
-      toast.success("فایل PDF ذخیره شد")
+      await downloadSchedulePdf(from, to, singleClassId)
+      toast.success("فایل پی‌دی‌اف ذخیره شد")
     } catch {
       toast.error("دانلود انجام نشد")
     } finally {
       setServerPdfBusy(false)
+    }
+  }
+
+  // Client Excel: the whole visible week, all classes, Jalali dates.
+  async function exportWeekExcel() {
+    setExcelBusy(true)
+    try {
+      await exportLessonPlans(from, to)
+      toast.success("فایل اکسل ذخیره شد")
+    } catch {
+      toast.error("دانلود انجام نشد")
+    } finally {
+      setExcelBusy(false)
     }
   }
 
@@ -99,32 +113,25 @@ export default function WeekPage() {
     setOpen(true)
   }
 
-  // Browser print doubles as free PDF export. printScope locks what the
-  // preview shows (one day or the full week); afterprint restores it.
-  useEffect(() => {
-    function restore() {
-      setPrintScope("week")
-    }
-    window.addEventListener("afterprint", restore)
-    return () => window.removeEventListener("afterprint", restore)
-  }, [])
-
-  // Dialog closes first so its overlay never lands on paper; the timeout
-  // lets the close animation finish before the print dialog opens.
-  function printFromDialog(scope: "day" | "week") {
-    setPdfOpen(false)
-    setPrintScope(scope)
-    window.setTimeout(() => window.print(), 350)
-  }
-
-  const days = weekDays(anchor)
-  const from = toISODate(days[0] ?? anchor)
-  const to = toISODate(days[6] ?? anchor)
-  const selectedIso = toISODate(selected)
-
   const plans = useLessonPlans(from, to)
   const holidays = useHolidays(from, to)
-  const selectedPlans = plans?.filter((p) => p.date === selectedIso) ?? []
+  const { periods } = useLookups()
+  const ensureWeek = useEnsureWeek()
+  // The template sits on every week by itself: visiting a week fills its
+  // rows once, no teacher tap needed. The range key keeps day taps and
+  // tab-hops from re-firing it.
+  const ensuredKey = singleClassId ? `${singleClassId}:${from}` : null
+  useEffect(() => {
+    if (!ensuredKey || !singleClassId) return
+    ensureWeek.mutate({ classId: singleClassId, weekStart: from })
+    // Fire once per week: the mutation result (not the flag) drives retries.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensuredKey])
+  // Day list reads bell-first: table rows share one order.
+  const selectedPlans = useMemo(() => {
+    const filtered = (plans ?? []).filter((p) => p.date === selectedIso)
+    return sortPlansByPeriod(filtered, periods)
+  }, [plans, selectedIso, periods])
   const selectedHoliday = holidays?.find((h) => h.date === selectedIso)
 
   // Nights and weekends are free: warm the adjacent weeks so shifting feels
@@ -164,18 +171,21 @@ export default function WeekPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
-      <PrintPreview
-        scope={printScope}
-        days={days}
-        plans={plans ?? []}
-        holidays={holidays ?? []}
-        selectedIso={selectedIso}
-      />
-      <div className="print:hidden">
+      <div className="flex items-center justify-between">
         <h1 className="text-lg">طرح درس</h1>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={goToday}
+          disabled={isTodaySelected}
+          title="برگشت به طرح درس امروز"
+        >
+          <CalendarDays />
+          بازگشت به امروز
+        </Button>
       </div>
 
-      <Card className="print:hidden">
+      <Card>
         <CardContent className="flex flex-col gap-3">
           <header className="mx-auto flex w-full max-w-lg items-center justify-between">
             <Button size="sm" variant="ghost" onClick={() => shiftWeek(-1)}>
@@ -235,7 +245,7 @@ export default function WeekPage() {
         </CardContent>
       </Card>
 
-      <Card className="flex-1 print:hidden">
+      <Card className="flex-1">
         <CardHeader className="flex flex-row flex-wrap items-center gap-2">
           <CardTitle className="me-auto">
             درس‌های {formatShortDate(selected)}
@@ -243,45 +253,13 @@ export default function WeekPage() {
           <Button
             size="sm"
             variant="outline"
-            onClick={goToday}
-            disabled={isTodaySelected}
-            title="برگشت به طرح درس امروز"
-          >
-            <CalendarDays />
-            بازگشت به امروز
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
             onClick={() => setPdfOpen(true)}
             disabled={plans === undefined}
-            title="خروجی PDF طرح درس روز یا هفته"
+            title="خروجی گرفتن از جدول طرح درس هفته"
           >
             <FileDown />
-            خروجی PDF
+            خروجی گرفتن از جدول
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void serverWeekPdf()}
-            disabled={plans === undefined || serverPdfBusy}
-            title="PDF هفته از سرور — مناسب ارسال و بایگانی"
-          >
-            <FileDown />
-            PDF هفته
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null)
-              setOpen(true)
-            }}
-            title="درس جدید فقط برای همین روز ساخته می‌شود"
-          >
-            <Plus />
-            افزودن درس به این روز
-          </Button>
-          <ViewToggle mode={mode} onChange={setMode} />
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {selectedHoliday && (
@@ -291,27 +269,9 @@ export default function WeekPage() {
           )}
 
           {plans === undefined ? (
-            mode === "table" ? (
-              <LessonTableSkeleton rows={1} />
-            ) : (
-              <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
-                <LessonCardSkeleton />
-              </ul>
-            )
+            <LessonTableSkeleton rows={1} />
           ) : selectedPlans.length ? (
-            mode === "table" ? (
-              <LessonTable plans={selectedPlans} onSelect={select} />
-            ) : (
-              <ul className="grid grid-cols-1 gap-2 md:gap-4 lg:grid-cols-2">
-                {selectedPlans.map((plan) => (
-                  <LessonCard
-                    key={plan.id}
-                    plan={plan}
-                    onSelect={() => select(plan)}
-                  />
-                ))}
-              </ul>
-            )
+            <LessonTable plans={selectedPlans} onSelect={select} />
           ) : (
             <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-foreground/10 py-10 text-center">
               <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -320,7 +280,7 @@ export default function WeekPage() {
               <div className="space-y-1">
                 <p className="text-sm font-medium">این روز خالی است</p>
                 <p className="text-xs text-muted-foreground">
-                  برای این روز درسی ثبت نشده. دکمه بالا بزن.
+                  برای این روز درسی ثبت نشده.
                 </p>
               </div>
             </div>
@@ -331,25 +291,27 @@ export default function WeekPage() {
       <ResponsiveDialog
         open={pdfOpen}
         onOpenChange={setPdfOpen}
-        title="خروجی PDF"
-        description="بازه خروجی را انتخاب کن؛ پیش‌نمایش چاپ باز می‌شود و از همان‌جا PDF می‌گیری."
+        title="خروجی گرفتن از جدول"
+        description="کل هفته را پی‌دی‌اف یا اکسل ذخیره کن."
       >
         <div className="flex flex-col gap-2">
           <Button
             variant="outline"
             className="justify-start"
-            onClick={() => printFromDialog("day")}
+            disabled={serverPdfBusy || !singleClassId}
+            onClick={() => void serverWeekPdf()}
           >
-            <CalendarDays />
-            خروجی PDF همین روز — {formatShortDate(selected)}
+            <FileDown />
+            {serverPdfBusy ? "در حال ساخت…" : "ذخیره کل هفته پی‌دی‌اف"}
           </Button>
           <Button
             variant="outline"
             className="justify-start"
-            onClick={() => printFromDialog("week")}
+            disabled={excelBusy}
+            onClick={() => void exportWeekExcel()}
           >
-            <CalendarRange />
-            خروجی PDF کل هفته
+            <FileSpreadsheet />
+            {excelBusy ? "در حال ساخت…" : "ذخیره کل هفته اکسل"}
           </Button>
         </div>
       </ResponsiveDialog>
@@ -362,116 +324,4 @@ export default function WeekPage() {
       />
     </div>
   )
-}
-
-// ── PRINT ──────────────────────────────────────────────────
-// Screen shows one day at a time; paper shows the glanceable sheet:
-// day view = that day's rows, week view = one row per day of the week.
-// Hidden on screen (print-only), everything else hides on paper (print:hidden).
-
-function PrintPreview({
-  scope,
-  days,
-  plans,
-  holidays,
-  selectedIso,
-}: {
-  scope: "day" | "week"
-  days: Date[]
-  plans: LessonPlan[]
-  holidays: { date: string; title: string }[]
-  selectedIso: string
-}) {
-  const { className, subjectName, periodLabel } = useLookups()
-
-  const showDays =
-    scope === "day"
-      ? days.filter((day) => toISODate(day) === selectedIso)
-      : days
-
-  const heading =
-    scope === "day"
-      ? formatShortDate(fromISODate(selectedIso))
-      : `${formatNumericDate(days[0] ?? new Date())} تا ${formatNumericDate(days[6] ?? new Date())}`
-
-  return (
-    <section aria-hidden className="hidden print:block" dir="rtl">
-      <div className="mb-3 flex items-baseline justify-between border-b-2 border-black pb-2">
-        <h1 className="text-base font-bold">
-          {scope === "day" ? "طرح درس روز" : "طرح درس هفته"} — طرحینو
-        </h1>
-        <p className="text-xs">{heading}</p>
-      </div>
-      <table className="w-full border-collapse text-xs">
-        <thead>
-          <tr>
-            <th className="border border-black px-2 py-1 text-start">روز</th>
-            <th className="border border-black px-2 py-1 text-start">فعالیت</th>
-            <th className="border border-black px-2 py-1 text-start">کلاس</th>
-            <th className="border border-black px-2 py-1 text-start">درس</th>
-            <th className="border border-black px-2 py-1 text-start">زنگ</th>
-            <th className="border border-black px-2 py-1 text-start">ساعت</th>
-          </tr>
-        </thead>
-        <tbody>
-          {showDays.map((day) => {
-            const iso = toISODate(day)
-            const rows = plans.filter((p) => p.date === iso)
-            const holiday = holidays.find((h) => h.date === iso)
-            const label = `${weekdayName(day)} ${formatNumericDate(day)}`
-            if (!rows.length) {
-              return (
-                <tr key={iso}>
-                  <td className="border border-black px-2 py-1 font-bold">
-                    {label}
-                  </td>
-                  <td
-                    colSpan={5}
-                    className="border border-black px-2 py-1 text-neutral-500"
-                  >
-                    {holiday ? `${holiday.title} — تعطیل` : "—"}
-                  </td>
-                </tr>
-              )
-            }
-            return rows.map((plan, i) => (
-              <tr key={plan.id} className="break-inside-avoid">
-                {i === 0 && (
-                  <td
-                    rowSpan={rows.length}
-                    className="border border-black px-2 py-1 align-top font-bold"
-                  >
-                    {label}
-                  </td>
-                )}
-                <td className="border border-black px-2 py-1">
-                  {plan.activity}
-                  {plan.notes ? ` — ${plan.notes}` : ""}
-                </td>
-                <td className="border border-black px-2 py-1">
-                  {className(plan.class_id) ?? "—"}
-                </td>
-                <td className="border border-black px-2 py-1">
-                  {subjectName(plan.subject_id) ?? "—"}
-                </td>
-                <td className="border border-black px-2 py-1">
-                  {periodLabel(plan.period_id) ?? "—"}
-                </td>
-                <td className="border border-black px-2 py-1 whitespace-nowrap">
-                  {planTime(plan)}
-                </td>
-              </tr>
-            ))
-          })}
-        </tbody>
-      </table>
-    </section>
-  )
-}
-
-function planTime(plan: LessonPlan): string {
-  const parts = [plan.start_time, plan.end_time]
-    .filter(Boolean)
-    .map((time) => formatTime(time as string))
-  return parts.length ? parts.join(" تا ") : "—"
 }

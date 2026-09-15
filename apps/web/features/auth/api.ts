@@ -1,5 +1,5 @@
 import { apiFetch, setAccessToken } from "@/lib/api/client"
-import type { GradingMode, TokenResponse, User } from "@/lib/api/types"
+import type { TokenResponse, User } from "@/lib/api/types"
 
 export async function login(
   phone: string,
@@ -70,18 +70,4 @@ export function changePassword(input: {
 
 export function purgeMyData(): Promise<void> {
   return apiFetch<void>("/users/me/data", { method: "DELETE" })
-}
-
-// ── GRADING MODE (whole-teacher numeric vs descriptive) ──────
-// One key for all subjects together. The server re-describes old grades
-// under each subject's scale on switch and returns how many it converted.
-
-export function setGradingMode(mode: GradingMode): Promise<{
-  user: User
-  converted: number
-}> {
-  return apiFetch<{ user: User; converted: number }>("/users/me/grading-mode", {
-    method: "POST",
-    body: { grading_mode: mode },
-  })
 }

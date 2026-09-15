@@ -11,15 +11,7 @@ import {
 
 import { ExcelSection } from "@/features/excel/excel-section"
 import { ReportsSection } from "@/features/reports/reports-section"
-import {
-  ClassesSection,
-  ClassSubjectsSection,
-  GradingModeSection,
-  GradeScaleSection,
-  PeriodsSection,
-  SchoolsSection,
-  SubjectsSection,
-} from "@/features/settings/settings-sections"
+import { ElementarySetupSection } from "@/features/settings/elementary-setup-section"
 
 export default function SettingsPage() {
   return (
@@ -27,7 +19,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-lg">تنظیمات</h1>
         <p className="text-sm text-muted-foreground">
-          اطلاعات پایه و ورود و خروج اکسل.
+          کلاس، زنگ‌ها و دانش‌آموزان؛ به‌علاوه ورود و خروج اکسل.
         </p>
       </div>
 
@@ -44,13 +36,7 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="base" className="grid grid-cols-1 gap-4">
-          <SchoolsSection />
-          <ClassesSection />
-          <SubjectsSection />
-          <GradingModeSection />
-          <GradeScaleSection />
-          <ClassSubjectsSection />
-          <PeriodsSection />
+          <ElementarySetupSection />
         </TabsContent>
 
         <TabsContent value="excel" className="grid grid-cols-1 gap-4">

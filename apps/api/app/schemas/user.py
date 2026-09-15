@@ -19,7 +19,8 @@ class UserOut(BaseModel):
     phone: str
     first_name: str
     last_name: str
-    # Whole-teacher grading mode: one key for all subjects together.
+    # Always "descriptive": elementary teachers pick levels only. Kept on the
+    # payload so older clients keep parsing; the switch endpoint is gone.
     grading_mode: GradingMode = "descriptive"
     created_at: datetime
 
@@ -27,17 +28,6 @@ class UserOut(BaseModel):
 class UserUpdate(BaseModel):
     first_name: str | None = Field(default=None, min_length=1, max_length=100)
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
-
-
-class GradingModeUpdate(BaseModel):
-    # Whole-teacher switch: one key, all subjects together.
-    grading_mode: GradingMode
-
-
-class GradingModeOut(BaseModel):
-    user: UserOut
-    # Old rows re-described under each subject's scale on switch.
-    converted: int = 0
 
 
 class ChangePasswordRequest(BaseModel):

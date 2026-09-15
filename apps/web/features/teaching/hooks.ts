@@ -11,7 +11,6 @@ import {
 import {
   createLessonPlan,
   deleteLessonPlan,
-  getGradeScale,
   listClasses,
   listClassSubjectsByClass,
   listHolidays,
@@ -22,7 +21,7 @@ import {
   updateLessonPlan,
   type LessonPlanInput,
 } from "@/features/teaching/api"
-import type { GradeScale, LessonPlan } from "@/lib/api/types"
+import type { LessonPlan } from "@/lib/api/types"
 
 export type { LessonPlanInput }
 
@@ -112,18 +111,6 @@ export function useClassSubjects(classId: string | null) {
     ...LOOKUP_CACHE,
   }).data
 }
-
-/** Per-subject descriptive bands for grades; settings owns the mutations. */
-export function useGradeScale(subjectId: string | null) {
-  return useQuery({
-    queryKey: ["grade-scale", subjectId],
-    queryFn: () => getGradeScale(subjectId as string),
-    enabled: !!subjectId,
-    ...LOOKUP_CACHE,
-  }).data
-}
-
-export type { GradeScale }
 
 /** Name lookups shared by the day and week views. */
 export function useLookups() {
@@ -248,8 +235,13 @@ export function useSaveLessonPlan(plan: LessonPlan | null, onDone: () => void) {
 }
 
 export function removePlanFromCache(client: PlansClient, id: string) {
+  removePlansFromCache(client, [id])
+}
+
+export function removePlansFromCache(client: PlansClient, ids: string[]) {
+  const gone = new Set(ids)
   client.setQueriesData<LessonPlan[]>({ queryKey: ["lesson-plans"] }, (old) =>
-    old?.filter((p) => p.id !== id)
+    old?.filter((p) => !gone.has(p.id))
   )
 }
 

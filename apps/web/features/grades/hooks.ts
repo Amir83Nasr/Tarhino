@@ -47,11 +47,6 @@ export function useAssessments(subjectId: string | null) {
 
 export type { Gradebook }
 
-// ── SCHOOLS ────────────────────────────────────────────────
-// Read-only here; settings owns the mutations. One import for the grades page.
-
-export { useSchools } from "@/features/settings/school-options"
-
 // ── STUDENTS ───────────────────────────────────────────────
 // Scoped per class: every mutation touches only ["students", classId].
 
@@ -259,15 +254,14 @@ export function useUpsertGrade(subjectId: string) {
     }: {
       studentId: string
       assessmentId: string
-      grade: { value: number } | { level: string }
+      grade: { level: string }
     }) => upsertGrade(studentId, assessmentId, grade),
     onMutate: async ({ studentId, assessmentId, grade }) => {
       await client.cancelQueries({ queryKey: gradeKey })
       const previous = client.getQueryData<Gradebook>(gradeKey)
       client.setQueryData<Gradebook>(gradeKey, (old) => {
         if (!old) return old
-        const patch =
-          "level" in grade ? { label: grade.level } : { value: grade.value }
+        const patch = { label: grade.level }
         const hit = old.grades.find(
           (g) => g.student_id === studentId && g.assessment_id === assessmentId
         )
@@ -288,8 +282,8 @@ export function useUpsertGrade(subjectId: string) {
               updated_at: now,
               student_id: studentId,
               assessment_id: assessmentId,
-              value: "level" in grade ? 0 : grade.value,
-              label: "level" in grade ? grade.level : "",
+              value: 0,
+              label: grade.level,
             },
           ],
         }

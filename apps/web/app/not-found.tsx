@@ -13,7 +13,7 @@ export default function NotFound() {
 
   return (
     <div className="mx-auto flex min-h-[70svh] w-full max-w-md flex-col items-center justify-center gap-5 px-4 py-10 text-center">
-      <Image src="/square.svg" alt="طرحینو" width={64} height={64} priority />
+      <Image src="/icons/square.svg" alt="طرحینو" width={64} height={64} />
       <p
         dir="ltr"
         aria-hidden

@@ -13,8 +13,6 @@ from app.db.session import get_session
 from app.models.user import RefreshToken
 from app.schemas.user import (
     ChangePasswordRequest,
-    GradingModeOut,
-    GradingModeUpdate,
     SessionOut,
     UserOut,
     UserUpdate,
@@ -52,50 +50,6 @@ async def update_me(payload: UserUpdate, user: CurrentUser, session: Session) ->
     await session.commit()
     await session.refresh(user)
     return _out(user)
-
-
-@router.post("/me/grading-mode", response_model=GradingModeOut)
-async def set_grading_mode(
-    payload: GradingModeUpdate, user: CurrentUser, session: Session
-) -> GradingModeOut:
-    """Switch the whole-teacher grading mode and convert old grades with it.
-
-    Old rows keep working either way (value stays the averaging anchor):
-    - → descriptive: each value re-described under its subject's scale.
-    - → numeric: stored labels kept as-is (they already match their values).
-    """
-    from app.models.teaching import Assessment, Grade, SubjectGradeScale
-    from app.reports.grades import DEFAULT_SCALE, GradeScaleBands, describe_level
-
-    user.grading_mode = payload.grading_mode
-    converted = 0
-    if payload.grading_mode == "descriptive":
-        scales = {
-            str(s.subject_id): GradeScaleBands(
-                excellent_min=float(s.excellent_min),
-                good_min=float(s.good_min),
-                pass_min=float(s.pass_min),
-                excellent_label=s.excellent_label,
-                good_label=s.good_label,
-                fair_label=s.fair_label,
-                needs_label=s.needs_label,
-            )
-            for s in await session.scalars(
-                select(SubjectGradeScale).where(SubjectGradeScale.user_id == user.id)
-            )
-        }
-        subjects = {
-            str(a.id): str(a.subject_id)
-            for a in await session.scalars(select(Assessment).where(Assessment.user_id == user.id))
-        }
-        rows = list(await session.scalars(select(Grade).where(Grade.user_id == user.id)))
-        for row in rows:
-            scale = scales.get(subjects.get(str(row.assessment_id), ""), DEFAULT_SCALE)
-            row.label = describe_level(float(row.value), scale)
-            converted += 1
-    await session.commit()
-    await session.refresh(user)
-    return GradingModeOut(user=_out(user), converted=converted)
 
 
 @router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)
@@ -180,7 +134,6 @@ async def purge_my_data(user: CurrentUser, session: Session) -> None:
         School,
         Student,
         Subject,
-        SubjectGradeScale,
         TeachingClass,
     )
 
@@ -188,7 +141,6 @@ async def purge_my_data(user: CurrentUser, session: Session) -> None:
         Grade,
         LessonPlan,
         Assessment,
-        SubjectGradeScale,
         ClassSubject,
         Period,
         Student,

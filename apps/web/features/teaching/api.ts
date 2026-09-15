@@ -5,7 +5,6 @@ import type {
   Assessment,
   ClassSubject,
   Grade,
-  GradeScale,
   Holiday,
   LessonPlan,
   LessonStatus,
@@ -99,6 +98,14 @@ export function parseFullName(line: string): {
   return { first_name: first, last_name: parts.join(" ") || "—" }
 }
 
+/** Single-name rows store last_name as "—" (see parseFullName): hide it. */
+export function studentDisplayName(s: {
+  first_name: string
+  last_name: string
+}) {
+  return s.last_name === "—" ? s.first_name : `${s.first_name} ${s.last_name}`
+}
+
 // ── ASSESSMENTS & GRADES ───────────────────────────────────
 
 export const listAssessmentsBySubject = (subjectId: string) =>
@@ -130,12 +137,12 @@ export type Gradebook = {
 export const listGradebook = (subjectId: string) =>
   apiFetch<Gradebook>(`/assessments/${subjectId}/gradebook`)
 
-// Numeric mode sends value; descriptive mode sends one of the subject
-// scale's 4 labels. The server enforces which one applies.
+// Descriptive-only: teachers send one of the fixed levels; the server maps
+// it to the averaging anchor itself.
 export function upsertGrade(
   studentId: string,
   assessmentId: string,
-  grade: { value: number } | { level: string }
+  grade: { level: string }
 ) {
   return apiFetch<Grade>("/grades/upsert", {
     method: "POST",
@@ -143,59 +150,39 @@ export function upsertGrade(
   })
 }
 
-// ── GRADE SCALES (per-subject descriptive bands) ─────────────
+// ── FIXED DESCRIPTIVE LEVELS ─────────────────────────────
+// Same 4 labels the server's default bands use. Single source for the
+// descriptive-mode picker.
 
-export type GradeScaleInput = {
-  excellent_min: number
-  good_min: number
-  pass_min: number
-  excellent_label: string
-  good_label: string
-  fair_label: string
-  needs_label: string
+export const DEFAULT_LEVELS = [
+  "خیلی خوب",
+  "خوب",
+  "قابل قبول",
+  "نیازمند تلاش بیشتر",
+] as const
+
+// ── ELEMENTARY SETUP ─────────────────────────────────────────
+// One call: single school + class upsert, grade subjects, 10 bells (5
+// morning + 5 afternoon). Everything editable after.
+
+export type ElementarySetupInput = {
+  school_name: string
+  name?: string
+  grade: string
+  shift: "morning" | "afternoon" | "rotating"
 }
 
-export const getGradeScale = (subjectId: string) =>
-  apiFetch<GradeScale>(`/grade-scales/by-subject/${subjectId}`)
-
-export function saveGradeScale(
-  scaleId: string,
-  patch: Partial<GradeScaleInput>
-) {
-  return apiFetch<GradeScale>(`/grade-scales/${scaleId}`, {
-    method: "PATCH",
-    body: patch,
-  })
+export type ElementarySetupResult = TeachingClass & {
+  school: School
+  subjects: Subject[]
+  periods: Period[]
 }
 
-export function createGradeScale(subjectId: string, input: GradeScaleInput) {
-  return apiFetch<GradeScale>("/grade-scales", {
+export function setupElementaryClass(input: ElementarySetupInput) {
+  return apiFetch<ElementarySetupResult>("/classes/elementary-setup", {
     method: "POST",
-    body: { subject_id: subjectId, ...input },
+    body: input,
   })
-}
-
-export const relabelSubjectGrades = (subjectId: string) =>
-  apiFetch<number>(`/grade-scales/by-subject/${subjectId}/relabel`, {
-    method: "POST",
-  })
-
-const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
-const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩"
-
-/** 0–20, decimals allowed; empty string means "clear" (caller deletes nothing). */
-export function parseGradeValue(raw: string): number | null {
-  let normalized = raw.trim()
-  for (let i = 0; i < 10; i++) {
-    normalized = normalized
-      .replaceAll(FA_DIGITS[i]!, String(i))
-      .replaceAll(AR_DIGITS[i]!, String(i))
-  }
-  normalized = normalized.replace("٫", ".").replace("٬", "").replace(",", ".")
-  if (!normalized) return null
-  if (!/^\d{1,2}(\.\d{1,2})?$/.test(normalized)) return null
-  const value = Number(normalized)
-  return Number.isFinite(value) && value >= 0 && value <= 20 ? value : null
 }
 
 // ── LESSON PLANS ───────────────────────────────────────────
@@ -297,6 +284,7 @@ export type PeriodInput = {
   start_time: string
   end_time: string
   order_index: number
+  shift?: "morning" | "afternoon"
 }
 
 export function createPeriod(input: PeriodInput) {

@@ -32,7 +32,9 @@ function fail(error: unknown) {
 
 // ── IDENTITY ─────────────────────────────────────────────────
 
-export function IdentitySection() {
+// Shared editor state so the profile card and the account-hub dialog edit
+// the same draft without duplicating mutation logic.
+export function useIdentityEditor() {
   const user = useAuthStore((s) => s.user)
   const setUser = useAuthStore((s) => s.setUser)
   const client = useQueryClient()
@@ -60,12 +62,9 @@ export function IdentitySection() {
     },
   })
 
-  if (!user) return <Skeleton className="h-32 w-full" />
-
+  if (!user) return null
   const first = firstName ?? user.first_name
   const last = lastName ?? user.last_name
-  const dirty =
-    first.trim() !== user.first_name || last.trim() !== user.last_name
 
   function onSave() {
     if (!first.trim() || !last.trim()) {
@@ -83,6 +82,63 @@ export function IdentitySection() {
     )
   }
 
+  return {
+    user,
+    first,
+    last,
+    dirty: first.trim() !== user.first_name || last.trim() !== user.last_name,
+    pending: save.isPending,
+    setFirst: setFirstName,
+    setLast: setLastName,
+    onSave,
+  }
+}
+
+export function IdentityFields({
+  editor,
+}: {
+  editor: NonNullable<ReturnType<typeof useIdentityEditor>>
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <Field>
+          <FieldLabel htmlFor="profile-first">نام</FieldLabel>
+          <Input
+            id="profile-first"
+            value={editor.first}
+            onChange={(e) => editor.setFirst(e.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="profile-last">نام خانوادگی</FieldLabel>
+          <Input
+            id="profile-last"
+            value={editor.last}
+            onChange={(e) => editor.setLast(e.target.value)}
+          />
+        </Field>
+      </div>
+      {editor.dirty && (
+        <Button
+          type="button"
+          size="xs"
+          className="mt-3"
+          disabled={editor.pending}
+          onClick={editor.onSave}
+        >
+          {editor.pending ? "…" : "ذخیره مشخصات"}
+        </Button>
+      )}
+    </>
+  )
+}
+
+export function IdentitySection() {
+  const editor = useIdentityEditor()
+  if (!editor) return <Skeleton className="h-32 w-full" />
+  const { user } = editor
+
   return (
     <Card>
       <CardHeader>
@@ -96,35 +152,7 @@ export function IdentitySection() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-3">
-          <Field>
-            <FieldLabel htmlFor="profile-first">نام</FieldLabel>
-            <Input
-              id="profile-first"
-              value={first}
-              onChange={(e) => setFirstName(e.target.value)}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="profile-last">نام خانوادگی</FieldLabel>
-            <Input
-              id="profile-last"
-              value={last}
-              onChange={(e) => setLastName(e.target.value)}
-            />
-          </Field>
-        </div>
-        {dirty && (
-          <Button
-            type="button"
-            size="xs"
-            className="mt-3"
-            disabled={save.isPending}
-            onClick={onSave}
-          >
-            {save.isPending ? "…" : "ذخیره مشخصات"}
-          </Button>
-        )}
+        <IdentityFields editor={editor} />
       </CardContent>
     </Card>
   )
@@ -132,7 +160,7 @@ export function IdentitySection() {
 
 // ── PASSWORD ─────────────────────────────────────────────────
 
-export function PasswordSection() {
+export function PasswordFields() {
   const [current, setCurrent] = useState("")
   const [next, setNext] = useState("")
   const [repeat, setRepeat] = useState("")
@@ -166,59 +194,63 @@ export function PasswordSection() {
   }
 
   return (
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <Field>
+        <FieldLabel htmlFor="profile-current">گذرواژه فعلی</FieldLabel>
+        <Input
+          id="profile-current"
+          type="password"
+          dir="ltr"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+        />
+      </Field>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="profile-new">گذرواژه جدید</FieldLabel>
+          <Input
+            id="profile-new"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="profile-repeat">تکرار گذرواژه جدید</FieldLabel>
+          <Input
+            id="profile-repeat"
+            type="password"
+            dir="ltr"
+            autoComplete="new-password"
+            value={repeat}
+            onChange={(e) => setRepeat(e.target.value)}
+          />
+        </Field>
+      </div>
+      <FieldDescription>گذرواژه جدید دست‌کم ۸ نویسه باشد.</FieldDescription>
+      <Button
+        type="submit"
+        variant="outline"
+        className="w-fit"
+        disabled={save.isPending}
+      >
+        {save.isPending ? "…" : "تغییر گذرواژه"}
+      </Button>
+    </form>
+  )
+}
+
+export function PasswordSection() {
+  return (
     <Card>
       <CardHeader>
         <CardTitle>تغییر گذرواژه</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <Field>
-            <FieldLabel htmlFor="profile-current">گذرواژه فعلی</FieldLabel>
-            <Input
-              id="profile-current"
-              type="password"
-              dir="ltr"
-              autoComplete="current-password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-            />
-          </Field>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="profile-new">گذرواژه جدید</FieldLabel>
-              <Input
-                id="profile-new"
-                type="password"
-                dir="ltr"
-                autoComplete="new-password"
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="profile-repeat">
-                تکرار گذرواژه جدید
-              </FieldLabel>
-              <Input
-                id="profile-repeat"
-                type="password"
-                dir="ltr"
-                autoComplete="new-password"
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value)}
-              />
-            </Field>
-          </div>
-          <FieldDescription>گذرواژه جدید دست‌کم ۸ نویسه باشد.</FieldDescription>
-          <Button
-            type="submit"
-            variant="outline"
-            className="w-fit"
-            disabled={save.isPending}
-          >
-            {save.isPending ? "…" : "تغییر گذرواژه"}
-          </Button>
-        </form>
+        <PasswordFields />
       </CardContent>
     </Card>
   )

@@ -1,7 +1,7 @@
 export type LessonStatus = "planned" | "done" | "cancelled"
 export type HolidayType = "official" | "school" | "personal"
 
-export type GradingMode = "numeric" | "descriptive"
+export type GradingMode = "descriptive"
 
 export type User = {
   id: string
@@ -25,11 +25,18 @@ export type School = ServerRow & {
   color: string | null
 }
 
+export type Shift = "morning" | "afternoon" | "rotating"
+export type BellShift = "morning" | "afternoon"
+
 export type TeachingClass = ServerRow & {
   name: string
   grade: string | null
   color: string | null
   school_id: string
+  shift: Shift
+  shift_anchor: string | null
+  /** Bell set active this week (same as shift, unless rotating alternates). */
+  active_shift: BellShift
 }
 
 export type Student = ServerRow & {
@@ -52,17 +59,6 @@ export type Grade = ServerRow & {
   label: string
 }
 
-export type GradeScale = ServerRow & {
-  subject_id: string
-  excellent_min: number
-  good_min: number
-  pass_min: number
-  excellent_label: string
-  good_label: string
-  fair_label: string
-  needs_label: string
-}
-
 export type Subject = ServerRow & {
   name: string
   color: string | null
@@ -79,6 +75,7 @@ export type Period = ServerRow & {
   start_time: string
   end_time: string
   order_index: number
+  shift: BellShift
 }
 
 export type LessonPlan = ServerRow & {
@@ -98,6 +95,21 @@ export type Holiday = ServerRow & {
   title: string
   type: HolidayType
   description: string | null
+}
+
+// ── WEEKLY TIMETABLE ─────────────────────────────────────
+// Fixed year-long template: one row per (weekday, period) cell.
+// weekday is Saturday-first: 0 = شنبه … 4 = چهارشنبه.
+export type WeeklySlot = ServerRow & {
+  weekday: number
+  class_id: string
+  subject_id: string
+  period_id: string
+}
+
+export type EnsureWeekResult = {
+  created: LessonPlan[]
+  errors: { index: number; detail: string }[]
 }
 
 export type TokenResponse = {

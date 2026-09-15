@@ -9,6 +9,8 @@ import {
 
 export const metadata = {
   title: "انتقادها و پیشنهادها | طرحینو",
+  description:
+    "نظر، انتقاد یا پیشنهاد خود درباره طرحینو را از همین راه‌های ارتباطی بفرستید.",
 }
 
 export default function FeedbackPage() {

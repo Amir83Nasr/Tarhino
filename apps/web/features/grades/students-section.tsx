@@ -14,38 +14,54 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { toast } from "@workspace/ui/components/sonner"
 
 import { useStudentMutations, useStudents } from "@/features/grades/hooks"
-import { parseFullName } from "@/features/teaching/api"
+import { parseFullName, studentDisplayName } from "@/features/teaching/api"
 import { ApiError } from "@/lib/api/client"
 
 function fail(error: unknown) {
   toast.error(error instanceof ApiError ? error.message : "ذخیره نشد")
 }
 
-export function StudentsSection({ classId }: { classId: string }) {
+const displayName = studentDisplayName
+
+export function StudentsSection({
+  classId,
+  bare = false,
+}: {
+  classId: string
+  bare?: boolean
+}) {
   const students = useStudents(classId)
   const mutations = useStudentMutations(classId)
-  const [first, setFirst] = useState("")
-  const [last, setLast] = useState("")
+  const [full, setFull] = useState("")
   const [query, setQuery] = useState("")
   const [bulk, setBulk] = useState("")
   const [bulkOpen, setBulkOpen] = useState(false)
 
-  const filtered = (students ?? []).filter((s) =>
-    `${s.first_name} ${s.last_name}`.includes(query.trim())
-  )
+  const filtered = (students ?? [])
+    .filter((s) => displayName(s).includes(query.trim()))
+    .sort(
+      (a, b) =>
+        (a.last_name === "—" ? "" : a.last_name).localeCompare(
+          b.last_name === "—" ? "" : b.last_name,
+          "fa"
+        ) || a.first_name.localeCompare(b.first_name, "fa")
+    )
 
   function add(event: React.FormEvent) {
     event.preventDefault()
-    const firstName = first.trim()
-    const lastName = last.trim()
-    if (!firstName || !lastName) {
+    const name = full.trim()
+    if (!name) {
       toast.error("نام و نام خانوادگی را بنویسید")
       return
     }
-    setFirst("")
-    setLast("")
+    const { first_name, last_name } = parseFullName(name)
+    if (!first_name) {
+      toast.error("نام و نام خانوادگی را بنویسید")
+      return
+    }
+    setFull("")
     mutations.create.mutate(
-      { class_id: classId, first_name: firstName, last_name: lastName },
+      { class_id: classId, first_name, last_name },
       { onError: fail }
     )
   }
@@ -72,156 +88,152 @@ export function StudentsSection({ classId }: { classId: string }) {
     })
   }
 
+  // bare: reused inside another Card (settings section, grades page).
+  const body = (
+    <>
+      <Input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="جست‌وجو…"
+        aria-label="جست‌وجوی دانش‌آموز"
+      />
+
+      {students === undefined ? (
+        Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-9 w-full" />
+        ))
+      ) : filtered.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-foreground/10 py-3 text-center text-xs text-muted-foreground">
+          {students.length ? "چیزی پیدا نشد." : "هنوز دانش‌آموزی نیست."}
+        </p>
+      ) : (
+        <ol className="flex flex-col gap-2">
+          {filtered.map((student, i) => (
+            <StudentRow
+              key={`${student.id}-${displayName(student)}`}
+              id={student.id}
+              fullName={displayName(student)}
+              classId={classId}
+              index={i}
+            />
+          ))}
+        </ol>
+      )}
+
+      <form className="flex flex-wrap items-center gap-2" onSubmit={add}>
+        <Input
+          value={full}
+          onChange={(e) => setFull(e.target.value)}
+          placeholder="نام و نام خانوادگی"
+          aria-label="نام و نام خانوادگی"
+          className="min-w-28 flex-1"
+        />
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={mutations.create.isPending}
+        >
+          {mutations.create.isPending ? "…" : "افزودن"}
+        </Button>
+      </form>
+
+      {bulkOpen ? (
+        <div className="flex flex-col gap-2">
+          <textarea
+            value={bulk}
+            onChange={(e) => setBulk(e.target.value)}
+            placeholder={"علی احمدی\nمحمد رضایی"}
+            rows={4}
+            dir="rtl"
+            aria-label="فهرست نام‌ها"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring"
+          />
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={runBulk}
+              disabled={mutations.bulk.isPending}
+            >
+              {mutations.bulk.isPending ? "…" : "ثبت گروهی"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setBulkOpen(false)}
+            >
+              بستن
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="self-start"
+          onClick={() => setBulkOpen(true)}
+        >
+          افزودن گروهی (چسباندن فهرست)…
+        </Button>
+      )}
+    </>
+  )
+
+  if (bare) return <div className="flex flex-col gap-3">{body}</div>
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>دانش‌آموزان</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="جست‌وجو…"
-          aria-label="جست‌وجوی دانش‌آموز"
-        />
-
-        {students === undefined ? (
-          Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} className="h-9 w-full" />
-          ))
-        ) : filtered.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-foreground/10 py-3 text-center text-xs text-muted-foreground">
-            {students.length ? "چیزی پیدا نشد." : "هنوز دانش‌آموزی نیست."}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {filtered.map((student) => (
-              <StudentRow
-                key={student.id}
-                id={student.id}
-                firstName={student.first_name}
-                lastName={student.last_name}
-                classId={classId}
-              />
-            ))}
-          </ul>
-        )}
-
-        <form className="flex flex-wrap items-center gap-2" onSubmit={add}>
-          <Input
-            value={first}
-            onChange={(e) => setFirst(e.target.value)}
-            placeholder="نام"
-            aria-label="نام"
-            className="min-w-28 flex-1"
-          />
-          <Input
-            value={last}
-            onChange={(e) => setLast(e.target.value)}
-            placeholder="نام خانوادگی"
-            aria-label="نام خانوادگی"
-            className="min-w-28 flex-1"
-          />
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={mutations.create.isPending}
-          >
-            {mutations.create.isPending ? "…" : "افزودن"}
-          </Button>
-        </form>
-
-        {bulkOpen ? (
-          <div className="flex flex-col gap-2">
-            <textarea
-              value={bulk}
-              onChange={(e) => setBulk(e.target.value)}
-              placeholder={"علی احمدی\nمحمد رضایی"}
-              rows={4}
-              dir="rtl"
-              aria-label="فهرست نام‌ها"
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring"
-            />
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={runBulk}
-                disabled={mutations.bulk.isPending}
-              >
-                {mutations.bulk.isPending ? "…" : "ثبت گروهی"}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setBulkOpen(false)}
-              >
-                بستن
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="self-start"
-            onClick={() => setBulkOpen(true)}
-          >
-            افزودن گروهی (چسباندن فهرست)…
-          </Button>
-        )}
-      </CardContent>
+      <CardContent className="flex flex-col gap-3">{body}</CardContent>
     </Card>
   )
 }
 
 function StudentRow({
   id,
-  firstName,
-  lastName,
+  fullName,
   classId,
+  index,
 }: {
   id: string
-  firstName: string
-  lastName: string
+  fullName: string
   classId: string
+  index: number
 }) {
   const mutations = useStudentMutations(classId)
-  const [first, setFirst] = useState(firstName)
-  const [last, setLast] = useState(lastName)
+  const [full, setFull] = useState(fullName)
 
   function save() {
-    const patch = {
-      ...(first.trim() && first.trim() !== firstName
-        ? { first_name: first.trim() }
-        : {}),
-      ...(last.trim() && last.trim() !== lastName
-        ? { last_name: last.trim() }
-        : {}),
-    }
-    if (!Object.keys(patch).length) {
-      setFirst(firstName)
-      setLast(lastName)
+    const name = full.trim()
+    if (!name || name === fullName) {
+      setFull(fullName)
       return
     }
-    mutations.save.mutate({ id, patch }, { onError: fail })
+    const { first_name, last_name } = parseFullName(name)
+    if (!first_name) {
+      setFull(fullName)
+      return
+    }
+    mutations.save.mutate(
+      { id, patch: { first_name, last_name } },
+      { onError: fail }
+    )
   }
 
   return (
     <li className="flex items-center gap-2">
+      <span className="w-6 shrink-0 text-center text-xs text-muted-foreground tabular-nums">
+        {index + 1}
+      </span>
       <Input
-        value={first}
-        onChange={(e) => setFirst(e.target.value)}
+        value={full}
+        onChange={(e) => setFull(e.target.value)}
         onBlur={save}
-        aria-label="نام"
-      />
-      <Input
-        value={last}
-        onChange={(e) => setLast(e.target.value)}
-        onBlur={save}
-        aria-label="نام خانوادگی"
+        aria-label="نام و نام خانوادگی"
       />
       <Button
         type="button"
