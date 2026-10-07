@@ -3,9 +3,8 @@
 import {
   CalendarRange,
   CalendarDays,
+  ClipboardCheck,
   GraduationCap,
-  Settings,
-  Sparkles,
   User,
 } from "lucide-react"
 import Link from "next/link"
@@ -22,18 +21,32 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 const NAV = [
   { href: "/week", label: "طرح درس", icon: CalendarRange },
   { href: "/timetable", label: "برنامه هفتگی", icon: CalendarDays },
+  { href: "/attendance", label: "حضور و غیاب", icon: ClipboardCheck },
   { href: "/grades", label: "کارنامه", icon: GraduationCap },
-  { href: "/assistant", label: "دستیار", icon: Sparkles },
-  { href: "/settings", label: "تنظیمات", icon: Settings },
-  { href: "/profile", label: "پروفایل", icon: User },
+  { href: "/profile", label: "من", icon: User },
 ] as const
+
+const BOTTOM_NAV = NAV
 
 // ── TAB NAV (TEST) ──────────────────────────────────────────────
 // Slide on navbar tab change only; no finger-drag navigation.
 function tabIndexOf(pathname: string) {
-  return NAV.findIndex(
+  const i = NAV.findIndex(
     ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
   )
+  if (i >= 0) return i
+  // settings/assistant/feedback live inside tab 5
+  if (
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname === "/assistant" ||
+    pathname.startsWith("/assistant/") ||
+    pathname === "/feedback" ||
+    pathname.startsWith("/feedback/")
+  ) {
+    return NAV.findIndex(({ href }) => href === "/profile")
+  }
+  return -1
 }
 
 function reducedMotion() {
@@ -54,9 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Prefetch tab neighbors so the target opens instantly.
   useEffect(() => {
-    const i = NAV.findIndex(
-      ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
-    )
+    const i = tabIndexOf(pathname)
     if (i < 0) return
     for (const j of [i - 1, i + 1]) {
       const href = NAV[j]?.href
@@ -121,11 +132,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function HeaderNav() {
   const pathname = usePathname()
+  function isActive(href: string) {
+    if (href === "/profile")
+      return (
+        tabIndexOf(pathname) ===
+        NAV.findIndex(({ href: h }) => h === "/profile")
+      )
+    return pathname === href || pathname.startsWith(`${href}/`)
+  }
 
   return (
     <ul className="flex items-center gap-3">
       {NAV.map(({ href, label, icon: Icon }) => {
-        const active = pathname.startsWith(href)
+        const active = isActive(href)
         return (
           <li key={href}>
             <Link
@@ -154,8 +173,12 @@ function BottomNav() {
   return (
     <nav className="px-4 pb-[calc(env(safe-area-inset-bottom,0)+0.75rem)] [background:linear-gradient(to_top,var(--background)_60%,transparent)]">
       <ul className="mx-auto flex max-w-md rounded-full bg-background/80 p-1 shadow-lg ring-1 ring-foreground/10 backdrop-blur-md">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href)
+        {BOTTOM_NAV.map(({ href, label, icon: Icon }) => {
+          const active =
+            href === "/profile"
+              ? tabIndexOf(pathname) ===
+                NAV.findIndex(({ href: h }) => h === "/profile")
+              : pathname === href || pathname.startsWith(`${href}/`)
           return (
             <li key={href} className="flex-1">
               <Link

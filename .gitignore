@@ -13,7 +13,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ─── CACHE / DOWNLOADED / ARTIFACTS ───────────────────────
+# ─── CACHE / DOWNLOADED ARTIFACTS ─────────────────────────
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -30,11 +30,16 @@ dist
 *.tsbuildinfo
 next-env.d.ts
 
+# ─── BACKUPS ──────────────────────────────────────────────
+apps/api/backups/
+*.dump
+*.sql.gz
+
 # ─── SECRETS / CREDENTIALS / TOKENS ───────────────────────
 .env*
 *.pem
 
-# ─── OS / EDITOR / CLUTTER ────────────────────────────────
+# ─── OS / EDITOR CLUTTER ──────────────────────────────────
 .DS_Store
 TODO.md
 

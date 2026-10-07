@@ -5,8 +5,6 @@ import {
   CalendarOff,
   ChevronLeft,
   ChevronRight,
-  FileDown,
-  FileSpreadsheet,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
@@ -19,7 +17,6 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { cn } from "@workspace/ui/lib/utils"
-import { ResponsiveDialog } from "@workspace/ui/components/responsive-dialog"
 
 import { useQueryClient } from "@tanstack/react-query"
 
@@ -30,13 +27,12 @@ const LessonDialog = dynamic(
   { ssr: false }
 )
 import { downloadSchedulePdf } from "@/features/reports/api"
-import { exportLessonPlans } from "@/features/excel/import-export"
+import { PdfButton } from "@/features/reports/pdf-button"
 import {
   LessonTable,
   LessonTableSkeleton,
   sortPlansByPeriod,
 } from "@/features/teaching/lesson-table"
-import { toast } from "@workspace/ui/components/sonner"
 import {
   prefetchWeek,
   useHolidays,
@@ -65,9 +61,6 @@ export default function WeekPage() {
   const [selected, setSelected] = useState(() => new Date())
   const [editing, setEditing] = useState<LessonPlan | null>(null)
   const [open, setOpen] = useState(false)
-  const [pdfOpen, setPdfOpen] = useState(false)
-  const [serverPdfBusy, setServerPdfBusy] = useState(false)
-  const [excelBusy, setExcelBusy] = useState(false)
 
   // Single class: exports target it directly, no picker.
   const { classes } = useLookups()
@@ -78,34 +71,10 @@ export default function WeekPage() {
   const to = toISODate(days[6] ?? anchor)
   const selectedIso = toISODate(selected)
 
-  // Server PDF: the whole visible week, one A4 page, class header included.
+  // Whole visible week, one A4 page. PdfButton toasts + busy state.
   async function serverWeekPdf() {
-    if (!singleClassId) {
-      toast.error("اول از تنظیمات کلاس بسازید")
-      return
-    }
-    setServerPdfBusy(true)
-    try {
-      await downloadSchedulePdf(from, to, singleClassId)
-      toast.success("فایل پی‌دی‌اف ذخیره شد")
-    } catch {
-      toast.error("دانلود انجام نشد")
-    } finally {
-      setServerPdfBusy(false)
-    }
-  }
-
-  // Client Excel: the whole visible week, all classes, Jalali dates.
-  async function exportWeekExcel() {
-    setExcelBusy(true)
-    try {
-      await exportLessonPlans(from, to)
-      toast.success("فایل اکسل ذخیره شد")
-    } catch {
-      toast.error("دانلود انجام نشد")
-    } finally {
-      setExcelBusy(false)
-    }
+    if (!singleClassId) throw new Error("no class")
+    await downloadSchedulePdf(from, to, singleClassId)
   }
 
   function select(plan: LessonPlan) {
@@ -170,7 +139,7 @@ export default function WeekPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg">طرح درس</h1>
         <Button
@@ -250,16 +219,11 @@ export default function WeekPage() {
           <CardTitle className="me-auto">
             درس‌های {formatShortDate(selected)}
           </CardTitle>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setPdfOpen(true)}
-            disabled={plans === undefined}
-            title="خروجی گرفتن از جدول طرح درس هفته"
-          >
-            <FileDown />
-            خروجی گرفتن از جدول
-          </Button>
+          <PdfButton
+            label="دریافت PDF"
+            disabled={plans === undefined || !singleClassId}
+            run={serverWeekPdf}
+          />
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {selectedHoliday && (
@@ -287,34 +251,6 @@ export default function WeekPage() {
           )}
         </CardContent>
       </Card>
-
-      <ResponsiveDialog
-        open={pdfOpen}
-        onOpenChange={setPdfOpen}
-        title="خروجی گرفتن از جدول"
-        description="کل هفته را پی‌دی‌اف یا اکسل ذخیره کن."
-      >
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="outline"
-            className="justify-start"
-            disabled={serverPdfBusy || !singleClassId}
-            onClick={() => void serverWeekPdf()}
-          >
-            <FileDown />
-            {serverPdfBusy ? "در حال ساخت…" : "ذخیره کل هفته پی‌دی‌اف"}
-          </Button>
-          <Button
-            variant="outline"
-            className="justify-start"
-            disabled={excelBusy}
-            onClick={() => void exportWeekExcel()}
-          >
-            <FileSpreadsheet />
-            {excelBusy ? "در حال ساخت…" : "ذخیره کل هفته اکسل"}
-          </Button>
-        </div>
-      </ResponsiveDialog>
 
       <LessonDialog
         open={open}

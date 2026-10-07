@@ -1,5 +1,6 @@
 from app.models.teaching import (
     Assessment,
+    Attendance,
     ClassSubject,
     Grade,
     Holiday,
@@ -15,6 +16,7 @@ from app.models.user import RefreshToken, User
 
 __all__ = [
     "Assessment",
+    "Attendance",
     "ClassSubject",
     "Grade",
     "Holiday",

@@ -84,5 +84,11 @@ export const downloadSchedulePdf = (
 export const downloadTimetablePdf = (classId: string) =>
   downloadPdf(`/reports/timetable/${classId}.pdf`, "tarhino-timetable.pdf")
 
+export const downloadAttendancePdf = (classId: string, date: string) =>
+  downloadPdf(
+    `/reports/attendance/${classId}.pdf?date=${date}`,
+    "tarhino-attendance.pdf"
+  )
+
 export const downloadTimetableXls = (classId: string) =>
   downloadFile(`/reports/timetable/${classId}.xls`, "tarhino-timetable.xls")

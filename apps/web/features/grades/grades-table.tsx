@@ -1,9 +1,9 @@
 "use client"
 
-import { FileDown } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@workspace/ui/components/button"
+import { PdfButton } from "@/features/reports/pdf-button"
 import {
   Card,
   CardContent,
@@ -58,36 +58,20 @@ export function GradesSection({
     mutations.create.mutate(title, { onError: fail })
   }
 
-  const [pdfBusy, setPdfBusy] = useState(false)
-
   // Same data as the grid: no extra fetch, the backend pivots gradebook rows.
   async function downloadSheet() {
-    setPdfBusy(true)
-    try {
-      await downloadGradeSheetPdf(subjectId, classId)
-      toast.success("فایل پی‌دی‌اف ذخیره شد")
-    } catch {
-      toast.error("دانلود انجام نشد")
-    } finally {
-      setPdfBusy(false)
-    }
+    await downloadGradeSheetPdf(subjectId, classId)
   }
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-2">
         <CardTitle className="me-auto">کارنامه</CardTitle>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={pdfBusy || book === undefined || !book.assessments.length}
-          onClick={() => void downloadSheet()}
-          title="کارنامه به صورت پی‌دی‌اف"
-        >
-          <FileDown />
-          کارنامه (پی‌دی‌اف)
-        </Button>
+        <PdfButton
+          label="دریافت PDF"
+          disabled={book === undefined || !book.assessments.length}
+          run={downloadSheet}
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {book === undefined ? (

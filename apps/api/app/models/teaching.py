@@ -224,3 +224,22 @@ class Holiday(UserScoped):
     title: Mapped[str] = mapped_column(String(200))
     type: Mapped[str] = mapped_column(String(16))
     description: Mapped[str | None] = mapped_column(String(1000), default=None)
+
+
+class Attendance(UserScoped):
+    """Daily roll call: one status per student per day. Present by default."""
+
+    __tablename__ = "attendances"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", "student_id", name="uq_attendance_day_student"),
+        Index("ix_attendance_user_class_date", "user_id", "class_id", "date"),
+    )
+
+    date: Mapped[dt.date] = mapped_column(Date)
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("classes.id", ondelete="CASCADE"), index=True
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="present")

@@ -7,27 +7,21 @@ import { cn } from "@workspace/ui/lib/utils"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 // ── SITE HEADER ───────────────────────────────────────────────────
-// Shared top header for the landing page and the app panel, styled
-// after the landing header: fixed-height bar, max-w-7xl container,
-// logo + centered nav + theme toggle + actions.
+// Top bar for the app panel: fixed-height bar, max-w-7xl container,
+// logo + centered nav + theme toggle.
 export function SiteHeader({
   homeHref,
   center,
-  actions,
-  fixed = false,
   hideOnPrint = false,
 }: {
   homeHref: string
   center?: ReactNode
-  actions?: ReactNode
-  fixed?: boolean
   hideOnPrint?: boolean
 }) {
   return (
     <header
       className={cn(
-        "inset-x-0 top-0 z-40 border-b bg-background/80 backdrop-blur-xl",
-        fixed ? "fixed" : "sticky",
+        "sticky inset-x-0 top-0 z-40 border-b bg-background/80 backdrop-blur-xl",
         hideOnPrint && "print:hidden"
       )}
     >
@@ -48,10 +42,7 @@ export function SiteHeader({
           <span>طرحینو</span>
         </Link>
         {center}
-        <span className="flex shrink-0 items-center gap-1">
-          <ThemeToggle />
-          {actions}
-        </span>
+        <ThemeToggle />
       </div>
     </header>
   )

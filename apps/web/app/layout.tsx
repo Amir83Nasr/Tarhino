@@ -57,7 +57,7 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: ["/icons/logo.png"],
   },
-  robots: { index: true, follow: true },
+  robots: { index: false, follow: false },
   icons: {
     icon: [{ url: "/icons/square.svg", type: "image/svg+xml" }],
     apple: [{ url: "/icons/square.png", sizes: "180x180" }],

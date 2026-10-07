@@ -269,3 +269,29 @@ def test_effective_shift_alternates_weekly_for_rotating() -> None:
     assert effective_shift("rotating", anchor, anchor + dt.timedelta(days=7)) == "afternoon"
     assert effective_shift("rotating", anchor, anchor + dt.timedelta(days=14)) == "morning"
     assert saturday_of(dt.date(2026, 9, 13)).weekday() == 5  # Sunday -> Saturday
+
+
+def test_attendance_routes_are_registered() -> None:
+    paths = set(app.openapi()["paths"])
+
+    assert f"{API_PREFIX}/attendance/day" in paths
+    assert f"{API_PREFIX}/attendance/summary" in paths
+    assert f"{API_PREFIX}/attendance/{{item_id}}" in paths
+
+
+def test_attendance_schemas_accept_present_absent_only() -> None:
+    import uuid
+
+    from app.schemas.teaching import AttendanceCreate, AttendanceDaySet, AttendanceUpdate
+
+    ids = {"class_id": uuid.uuid4(), "student_id": uuid.uuid4()}
+    AttendanceCreate(date="2026-10-04", status="present", **ids)
+    AttendanceCreate(date="2026-10-04", status="absent", **ids)
+    AttendanceDaySet(date="2026-10-04", class_id=uuid.uuid4(), absent_ids=[])
+    AttendanceUpdate(status="present")
+
+    with pytest.raises(ValidationError):
+        AttendanceCreate(date="2026-10-04", status="late", **ids)  # type: ignore[arg-type]
+
+    with pytest.raises(ValidationError):
+        AttendanceDaySet(date="2026-10-04", class_id=uuid.uuid4(), absent_ids=[uuid.uuid4()] * 201)

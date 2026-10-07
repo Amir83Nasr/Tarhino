@@ -1,10 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import Link from "next/link"
-import { ArrowRight } from "lucide-react"
 
-import { Button } from "@workspace/ui/components/button"
 import { AuthForm } from "@/features/auth/auth-form"
 
 export default function LoginPage() {
@@ -24,14 +21,6 @@ export default function LoginPage() {
         </div>
       </div>
       <div className="relative flex flex-col items-center justify-center p-6 md:p-10">
-        <div className="inset-e-6 absolute top-6">
-          <Button variant="outline" size="xs" asChild>
-            <Link href="/">
-              <ArrowRight className="me-1.5 size-4" aria-hidden="true" />
-              بازگشت به صفحه اصلی
-            </Link>
-          </Button>
-        </div>
         <div className="flex w-full max-w-xs flex-col justify-center">
           <AuthForm />
         </div>

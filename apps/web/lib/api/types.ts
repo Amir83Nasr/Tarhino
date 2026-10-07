@@ -97,6 +97,15 @@ export type Holiday = ServerRow & {
   description: string | null
 }
 
+export type AttendanceStatus = "present" | "absent"
+
+export type Attendance = ServerRow & {
+  date: string
+  class_id: string
+  student_id: string
+  status: AttendanceStatus
+}
+
 // ── WEEKLY TIMETABLE ─────────────────────────────────────
 // Fixed year-long template: one row per (weekday, period) cell.
 // weekday is Saturday-first: 0 = شنبه … 4 = چهارشنبه.

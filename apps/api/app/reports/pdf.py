@@ -113,6 +113,10 @@ def timetable_filename(class_name: str, day: dt.date) -> str:
     return f"برنامه-هفتگی-{_slug(class_name)}-{jalali_stamp(day)}.pdf"
 
 
+def attendance_filename(class_name: str, day: dt.date) -> str:
+    return f"برگ-حضور-{_slug(class_name)}-{jalali_stamp(day)}.pdf"
+
+
 def pdf_response(pdf: bytes, filename: str) -> Response:
     """PDF response with a Persian filename (RFC 5987) + ASCII fallback."""
     return Response(
@@ -416,11 +420,53 @@ def _timetable_html(dataset: object) -> str:
     )
 
 
+def _attendance_html(dataset: object) -> str:
+    from app.reports.attendance import AttendanceSheetDataset
+
+    assert isinstance(dataset, AttendanceSheetDataset)
+    body = "\n".join(
+        f'<tr><td class="num">{to_persian_digits(i + 1)}</td>'
+        f"<td>{escape(row.name)}</td>"
+        f'<td class="num">{"غایب" if row.status == "absent" else "حاضر"}</td></tr>'
+        for i, row in enumerate(dataset.rows)
+    )
+    absent = sum(1 for row in dataset.rows if row.status == "absent")
+    table = (
+        "<table><thead><tr><th>ردیف</th><th>دانش‌آموز</th><th>وضعیت</th></tr></thead>"
+        f"<tbody>{body}</tbody></table>"
+    )
+    summary = ""
+    if dataset.summary:
+        items = "\n".join(
+            f'<tr><td>{escape(name)}</td><td class="num">{to_persian_digits(count)} جلسه</td></tr>'
+            for name, count in dataset.summary
+        )
+        summary = (
+            "<h2>جمع غیبت‌ها</h2>"
+            "<table><thead><tr><th>دانش‌آموز</th><th>غیبت</th></tr></thead>"
+            f"<tbody>{items}</tbody></table>"
+        )
+    return _page(
+        dataset.title,
+        _meta(
+            [
+                f"آموزگار: {escape(dataset.teacher_name)}" if dataset.teacher_name else "",
+                f"کلاس: {escape(dataset.class_name)}",
+                escape(dataset.day_label),
+                f"غایب: {to_persian_digits(absent)} از {to_persian_digits(len(dataset.rows))}",
+            ]
+        ),
+        table + summary,
+        sign=True,
+    )
+
+
 def render_pdf(kind: str, dataset: object) -> bytes:
     """Render a report dataset to PDF bytes. `kind` selects the template."""
     # Local import: Pango system libs load at call time, not at app startup.
     from weasyprint import HTML
 
+    from app.reports.attendance import AttendanceSheetDataset
     from app.reports.grades import GradeSheetDataset
     from app.reports.report_card import ReportCardDataset
     from app.reports.schedule import ScheduleDataset
@@ -439,6 +485,8 @@ def render_pdf(kind: str, dataset: object) -> bytes:
         html = _timetable_html(dataset)
     elif kind == "schedule" and isinstance(dataset, ScheduleDataset):
         html = _schedule_html(dataset)
+    elif kind == "attendance" and isinstance(dataset, AttendanceSheetDataset):
+        html = _attendance_html(dataset)
     else:
         raise ValueError(f"Unknown report kind: {kind}")
     return bytes(HTML(string=html).write_pdf())

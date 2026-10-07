@@ -9,6 +9,7 @@ from app.core.jalali import (
     weekday_name,
 )
 from app.main import API_PREFIX, app
+from app.reports.attendance import attendance_sheet_dataset
 from app.reports.excel import (
     excel_response,
     timetable_excel_filename,
@@ -373,3 +374,29 @@ def test_timetable_excel_renders_grid_with_bom() -> None:
 def test_timetable_xls_route_is_registered() -> None:
     paths = set(app.openapi()["paths"])
     assert f"{API_PREFIX}/reports/timetable/{{class_id}}.xls" in paths
+
+
+def test_attendance_sheet_marks_absent_and_totals() -> None:
+    dataset = attendance_sheet_dataset(
+        ["علی احمدی", "سارا موسوی"],
+        {"سارا موسوی"},
+        {"سارا موسوی": 3},
+        teacher_name="سارا معلم",
+        class_name="اول الف",
+        day_label="۱۴۰۵٫۰۶٫۲۲",
+    )
+    assert [r.status for r in dataset.rows] == ["present", "absent"]
+    assert dataset.summary == [("سارا موسوی", 3)]
+
+
+def test_attendance_html_has_day_and_summary() -> None:
+    from app.reports.pdf import _attendance_html, attendance_filename
+
+    dataset = attendance_sheet_dataset(
+        ["علی احمدی"], set(), {}, class_name="اول الف", day_label="۱۴۰۵٫۰۶٫۲۲"
+    )
+    html = _attendance_html(dataset)
+    assert "برگ حضور و غیاب" in html
+    assert "۱۴۰۵٫۰۶٫۲۲" in html
+    assert "حاضر" in html
+    assert attendance_filename("اول الف", dt.date(2026, 9, 13)).startswith("برگ-حضور-")

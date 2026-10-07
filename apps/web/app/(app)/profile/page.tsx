@@ -1,8 +1,8 @@
 import { AccountHub } from "@/features/profile/account-hub"
 
 export const metadata = {
-  title: "پروفایل | طرحینو",
-  description: "حساب، تنظیمات و امنیت.",
+  title: "من | طرحینو",
+  description: "حساب، کلاس، گزارش‌ها و پشتیبانی.",
 }
 
 export default function ProfilePage() {

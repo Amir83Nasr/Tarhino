@@ -358,3 +358,35 @@ class HolidayUpdate(BaseModel):
 
 class HolidayOut(HolidayFields, _ScopedOut):
     pass
+
+
+# ── ATTENDANCE (daily roll call, present/absent only) ───────
+
+AttendanceStatus = Literal["present", "absent"]
+
+
+class AttendanceFields(BaseModel):
+    date: dt.date
+    class_id: uuid.UUID
+    student_id: uuid.UUID
+    status: AttendanceStatus = "present"
+
+
+class AttendanceCreate(AttendanceFields):
+    pass
+
+
+class AttendanceUpdate(BaseModel):
+    status: AttendanceStatus
+
+
+class AttendanceOut(AttendanceFields, _ScopedOut):
+    pass
+
+
+class AttendanceDaySet(BaseModel):
+    """Whole-class save: one status per student for one date."""
+
+    date: dt.date
+    class_id: uuid.UUID
+    absent_ids: list[uuid.UUID] = Field(default_factory=list, max_length=200)

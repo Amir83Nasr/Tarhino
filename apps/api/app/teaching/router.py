@@ -14,6 +14,7 @@ from app.db.scoped import get_scoped
 from app.db.session import get_session
 from app.models.teaching import (
     Assessment,
+    Attendance,
     ClassSubject,
     Grade,
     Holiday,
@@ -34,6 +35,9 @@ from app.schemas.teaching import (
     AssessmentCreate,
     AssessmentOut,
     AssessmentUpdate,
+    AttendanceDaySet,
+    AttendanceOut,
+    AttendanceUpdate,
     ClassCreate,
     ClassOut,
     ClassSubjectCreate,
@@ -428,6 +432,151 @@ weekly_slots = build_crud_router(
     tag="weekly-slots",
     validate=_validate_slot_link,
 )
+
+
+# ── ATTENDANCE (daily roll call, present/absent only) ────────
+# Stored rows are absences only: present is the default, so a whole
+# present class saves zero rows and the sheet stays small.
+
+attendance = APIRouter(prefix="/attendance", tags=["attendance"])
+
+
+async def _require_class_student(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    class_id: uuid.UUID,
+    student_id: uuid.UUID,
+) -> None:
+    """Reject a student that is not owned or not enrolled in this class."""
+    student = await get_scoped(session, Student, student_id, user_id)
+    if student is None or student.class_id != class_id:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown student_id")
+
+
+@attendance.get("/day", response_model=list[AttendanceOut])
+async def attendance_day(
+    class_id: uuid.UUID,
+    date: dt.date,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[Attendance]:
+    """Absence rows of one class on one date; empty means all present."""
+    teaching_class = await get_scoped(session, TeachingClass, class_id, user.id)
+    if teaching_class is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    return list(
+        await session.scalars(
+            select(Attendance).where(
+                Attendance.user_id == user.id,
+                Attendance.class_id == class_id,
+                Attendance.date == date,
+            )
+        )
+    )
+
+
+@attendance.post("/day", response_model=list[AttendanceOut])
+async def attendance_set_day(
+    payload: AttendanceDaySet,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[Attendance]:
+    """Replace the day's absences with `absent_ids`; present deletes rows."""
+    teaching_class = await get_scoped(session, TeachingClass, payload.class_id, user.id)
+    if teaching_class is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    roster_ids = set(
+        await session.scalars(
+            select(Student.id).where(
+                Student.user_id == user.id, Student.class_id == payload.class_id
+            )
+        )
+    )
+    unknown = [sid for sid in payload.absent_ids if sid not in roster_ids]
+    if unknown:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown student_id")
+    existing = list(
+        await session.scalars(
+            select(Attendance).where(
+                Attendance.user_id == user.id,
+                Attendance.class_id == payload.class_id,
+                Attendance.date == payload.date,
+            )
+        )
+    )
+    want = set(payload.absent_ids)
+    for row in existing:
+        if row.student_id in want:
+            want.discard(row.student_id)
+        else:
+            await session.delete(row)
+    for student_id in sorted(want, key=str):
+        session.add(
+            Attendance(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                date=payload.date,
+                class_id=payload.class_id,
+                student_id=student_id,
+                status="absent",
+            )
+        )
+    await session.commit()
+    return list(
+        await session.scalars(
+            select(Attendance).where(
+                Attendance.user_id == user.id,
+                Attendance.class_id == payload.class_id,
+                Attendance.date == payload.date,
+            )
+        )
+    )
+
+
+@attendance.get("/summary", response_model=dict[str, int])
+async def attendance_summary(
+    class_id: uuid.UUID,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+) -> dict[str, int]:
+    """Absence counts per student id in a range; empty range means all time."""
+    teaching_class = await get_scoped(session, TeachingClass, class_id, user.id)
+    if teaching_class is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    stmt = select(Attendance.student_id).where(
+        Attendance.user_id == user.id,
+        Attendance.class_id == class_id,
+        Attendance.status == "absent",
+    )
+    if date_from is not None:
+        stmt = stmt.where(Attendance.date >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Attendance.date <= date_to)
+    counts: dict[str, int] = {}
+    for student_id in await session.scalars(stmt):
+        key = str(student_id)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+@attendance.patch("/{item_id}", response_model=AttendanceOut)
+async def attendance_flip(
+    item_id: uuid.UUID,
+    payload: AttendanceUpdate,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Attendance:
+    """Flip one row present/absent; present keeps the row for history."""
+    row = await get_scoped(session, Attendance, item_id, user.id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    await _require_class_student(session, user.id, row.class_id, row.student_id)
+    row.status = payload.status
+    await session.commit()
+    await session.refresh(row)
+    return row
 
 
 class BulkCreate(BaseModel):
@@ -984,4 +1133,5 @@ all_routers: list[APIRouter] = [
     lesson_plans,
     weekly_slots,
     holidays,
+    attendance,
 ]

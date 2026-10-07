@@ -2,25 +2,18 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import {
-  Bell,
-  CalendarDays,
   ChevronLeft,
-  CircleHelp,
-  GraduationCap,
-  House,
   KeyRound,
   LogOut,
   MessageSquareHeart,
-  Moon,
-  Palette,
   Phone,
   Settings,
+  Sparkles,
   Trash2,
-  UserRound,
+  type LucideIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
 import { useState } from "react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -32,6 +25,7 @@ import { toast } from "@workspace/ui/components/sonner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { logout, purgeMyData } from "@/features/auth/api"
+import { ReportsCenter } from "@/features/reports/reports-center"
 import {
   IdentityFields,
   PasswordFields,
@@ -41,8 +35,8 @@ import { setAccessToken } from "@/lib/api/client"
 import { formatNumericDate, fromISODate } from "@/lib/date/jalali"
 import { useAuthStore } from "@/stores/auth"
 
-// ── ACCOUNT HUB (toopset-style) ──────────────────────────────
-// One narrow column: gradient identity header, grouped link rows,
+// ── ACCOUNT HUB ─────────────────────────────────────────────────
+// Narrow column: identity card, account/security rows, support row,
 // danger zone last. Edit/password forms live in dialogs.
 
 const LOGOUT_DESCRIPTION = "مطمئنید که می‌خواهید از حساب خود خارج شوید؟"
@@ -53,8 +47,8 @@ type Row = {
   href?: string
   label: string
   hint?: string
-  icon: typeof House
-  tone?: "default" | "danger" | "accent"
+  icon: LucideIcon
+  tone?: "default" | "danger"
   action?: () => void
 }
 
@@ -64,36 +58,34 @@ function HubRow({ row }: { row: Row }) {
     <>
       <span
         className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+          "flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors",
           row.tone === "danger"
             ? "bg-destructive/10 text-destructive"
-            : row.tone === "accent"
-              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-              : "bg-muted/60 text-muted-foreground group-hover:text-foreground"
+            : "bg-primary/8 text-primary group-hover:bg-primary/12"
         )}
       >
-        <Icon className="size-4.5" />
+        <Icon className="size-4" strokeWidth={2} />
       </span>
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            "block truncate text-right",
+            "block truncate text-right text-[15px]",
             row.tone === "danger" ? "text-destructive" : undefined
           )}
         >
           {row.label}
         </span>
         {row.hint && (
-          <span className="block truncate text-xs text-muted-foreground">
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
             {row.hint}
           </span>
         )}
       </span>
-      <ChevronLeft className="size-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+      <ChevronLeft className="size-4 shrink-0 text-muted-foreground/40 transition-all group-hover:-translate-x-0.5 group-hover:text-muted-foreground" />
     </>
   )
   const cls =
-    "group flex min-h-[52px] w-full items-center gap-3 rounded-2xl px-3 text-sm font-medium transition-colors hover:bg-muted/70 active:bg-muted/90"
+    "group flex min-h-[48px] w-full items-center gap-3 rounded-xl px-2 text-sm transition-colors hover:bg-muted/70 active:bg-muted/90"
   if (row.href) {
     return (
       <Link href={row.href} className={cls}>
@@ -114,11 +106,11 @@ function HubRow({ row }: { row: Row }) {
 
 function HubGroup({ title, rows }: { title: string; rows: Row[] }) {
   return (
-    <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-      <p className="border-b px-4 py-2.5 text-xs font-semibold tracking-wide text-muted-foreground/80">
+    <section className="overflow-hidden rounded-2xl border bg-card">
+      <p className="px-4 pt-3 pb-1 text-xs font-bold text-muted-foreground">
         {title}
       </p>
-      <div className="flex flex-col gap-1 p-2">
+      <div className="flex flex-col gap-0.5 p-2">
         {rows.map((row) => (
           <HubRow key={row.label} row={row} />
         ))}
@@ -133,7 +125,6 @@ export function AccountHub() {
   const user = useAuthStore((s) => s.user)
   const status = useAuthStore((s) => s.status)
   const setUser = useAuthStore((s) => s.setUser)
-  const { resolvedTheme, setTheme } = useTheme()
   const editor = useIdentityEditor()
 
   const [dialog, setDialog] = useState<"identity" | "password" | null>(null)
@@ -180,15 +171,8 @@ export function AccountHub() {
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
-      <div>
-        <h1 className="text-lg">پروفایل</h1>
-        <p className="text-sm text-muted-foreground">
-          حساب، تنظیمات و امنیت؛ همه در یک‌جا.
-        </p>
-      </div>
-
-      {/* Identity header */}
-      <div className="rounded-3xl bg-gradient-to-br from-primary/8 via-primary/4 to-transparent p-4">
+      {/* Identity card */}
+      <div className="rounded-2xl border bg-card p-3">
         {status !== "authenticated" || !user ? (
           <div className="flex items-center gap-4">
             <Skeleton className="size-16 shrink-0 rounded-full" />
@@ -199,7 +183,7 @@ export function AccountHub() {
           </div>
         ) : (
           <div className="flex items-center gap-4">
-            <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/12 text-lg font-bold text-primary ring-2 ring-primary/20">
+            <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/12 text-base font-bold text-primary">
               {(user.first_name?.[0] ?? "") + (user.last_name?.[0] ?? "") ||
                 "ک"}
             </div>
@@ -232,59 +216,33 @@ export function AccountHub() {
 
       {/* Groups */}
       <div className="flex flex-col gap-3">
+        <ReportsCenter />
         <HubGroup
-          title="درس و کلاس"
+          title="حساب و امنیت"
           rows={[
-            { href: "/week", label: "طرح درس هفته", icon: CalendarDays },
-            { href: "/timetable", label: "برنامه هفتگی", icon: CalendarDays },
-            { href: "/grades", label: "کارنامه و نمرات", icon: GraduationCap },
-          ]}
-        />
-        <HubGroup
-          title="حساب"
-          rows={[
-            {
-              label: "ویرایش نام",
-              hint: user
-                ? `${user.first_name} ${user.last_name}`.trim()
-                : undefined,
-              icon: UserRound,
-              action: () => setDialog("identity"),
-            },
             {
               label: "تغییر گذرواژه",
+              hint: "دست‌کم ۸ نویسه",
               icon: KeyRound,
               action: () => setDialog("password"),
             },
             {
               href: "/settings",
-              label: "تنظیمات کلاس",
-              hint: "پایه، زنگ‌ها و دانش‌آموزان",
+              label: "کلاس من",
+              hint: "مدرسه، زنگ‌ها و دانش‌آموزان",
               icon: Settings,
             },
           ]}
         />
         <HubGroup
-          title="نمایش"
+          title="کمک و بازخورد"
           rows={[
-            {
-              label: resolvedTheme === "dark" ? "حالت روشن" : "حالت تیره",
-              hint: "تغییر تم",
-              icon: resolvedTheme === "dark" ? Moon : Palette,
-              action: () =>
-                setTheme(resolvedTheme === "dark" ? "light" : "dark"),
-            },
-          ]}
-        />
-        <HubGroup
-          title="پشتیبانی"
-          rows={[
+            { href: "/assistant", label: "دستیار طرحینو", icon: Sparkles },
             {
               href: "/feedback",
               label: "انتقادها و پیشنهادها",
               icon: MessageSquareHeart,
             },
-            { href: "/assistant", label: "دستیار", icon: CircleHelp },
             {
               href: "tel:+989306853363",
               label: "تماس با پشتیبانی",
@@ -293,21 +251,13 @@ export function AccountHub() {
             },
           ]}
         />
-        <HubGroup
-          title="اعلان‌ها"
-          rows={[
-            {
-              label: "یادآور طرح درس",
-              hint: "به‌زودی",
-              icon: Bell,
-              action: () => toast.message("یادآور طرح درس به‌زودی می‌آید"),
-            },
-          ]}
-        />
 
         {/* Danger zone */}
-        <section className="overflow-hidden rounded-2xl border border-destructive/20 bg-card shadow-sm">
-          <div className="flex flex-col gap-1 p-2">
+        <section className="overflow-hidden rounded-2xl border border-destructive/20 bg-card">
+          <p className="px-4 pt-3 pb-1 text-xs font-bold text-destructive/70">
+            خروج و حذف
+          </p>
+          <div className="flex flex-col gap-0.5 p-2">
             <HubRow
               row={{
                 label: "خروج از حساب",

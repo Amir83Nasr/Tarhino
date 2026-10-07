@@ -1,10 +1,6 @@
 "use client"
 
-import { FileDown, FileSpreadsheet, FileText } from "lucide-react"
-import { useState } from "react"
-
 import { Badge } from "@workspace/ui/components/badge"
-import { Button } from "@workspace/ui/components/button"
 import {
   Card,
   CardContent,
@@ -12,17 +8,9 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import { Label } from "@workspace/ui/components/label"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@workspace/ui/components/popover"
-import { toast } from "@workspace/ui/components/sonner"
 
-import {
-  downloadTimetablePdf,
-  downloadTimetableXls,
-} from "@/features/reports/api"
+import { downloadTimetablePdf } from "@/features/reports/api"
+import { PdfButton } from "@/features/reports/pdf-button"
 import {
   usePeriodsByClass,
   useTimetableSubjects,
@@ -39,7 +27,6 @@ export default function TimetablePage() {
   const classes = useClasses()
   const single = classes?.[0] ?? null
   const classId = single?.id ?? null
-  const [exportBusy, setExportBusy] = useState<"pdf" | "xls" | null>(null)
 
   const allPeriods = usePeriodsByClass(classId)
   // Timetable grid shows this week's bell set only.
@@ -49,86 +36,28 @@ export default function TimetablePage() {
   const { data: slots } = useWeeklySlots(classId)
   const subjects = useTimetableSubjects(classId)
 
-  const exportDisabled = !classId || exportBusy !== null || slots === undefined
+  const exportDisabled = !classId || slots === undefined
 
+  // Class timetable, one A4 page. Excel lives in the reports center.
   async function downloadPdf() {
-    if (!classId) return
-    setExportBusy("pdf")
-    try {
-      await downloadTimetablePdf(classId)
-      toast.success("فایل پی‌دی‌اف ذخیره شد")
-    } catch {
-      toast.error("دانلود انجام نشد")
-    } finally {
-      setExportBusy(null)
-    }
-  }
-
-  async function downloadXls() {
-    if (!classId) return
-    setExportBusy("xls")
-    try {
-      await downloadTimetableXls(classId)
-      toast.success("فایل اکسل ذخیره شد")
-    } catch {
-      toast.error("دانلود انجام نشد")
-    } finally {
-      setExportBusy(null)
-    }
+    if (!classId) throw new Error("no class")
+    await downloadTimetablePdf(classId)
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div>
         <h1 className="text-lg">برنامه هفتگی</h1>
-        <p className="text-sm text-muted-foreground">
-          یک‌بار بچین، کل سال همان می‌ماند. طرح درس هر هفته خودکار از همین قالب
-          ساخته می‌شود.
-        </p>
       </div>
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center gap-2">
           <CardTitle className="me-auto">جدول کلاس</CardTitle>
-          <Popover>
-            <PopoverTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={exportDisabled}
-                  title="خروجی جدول همین کلاس"
-                />
-              }
-            >
-              <FileDown />
-              {exportBusy === "pdf"
-                ? "در حال ساخت پی‌دی‌اف…"
-                : exportBusy === "xls"
-                  ? "در حال ساخت اکسل…"
-                  : "خروجی جدول"}
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-44 p-1.5">
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                disabled={exportDisabled}
-                onClick={() => void downloadPdf()}
-              >
-                <FileText />
-                خروجی پی‌دی‌اف
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                disabled={exportDisabled}
-                onClick={() => void downloadXls()}
-              >
-                <FileSpreadsheet />
-                خروجی اکسل
-              </Button>
-            </PopoverContent>
-          </Popover>
+          <PdfButton
+            label="دریافت PDF"
+            disabled={exportDisabled}
+            run={downloadPdf}
+          />
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {classes === undefined ? (

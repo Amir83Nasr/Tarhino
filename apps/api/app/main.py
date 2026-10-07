@@ -1,5 +1,10 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from app.ai.router import router as ai_router
 from app.auth.router import router as auth_router
@@ -10,6 +15,8 @@ from app.users.router import router as users_router
 
 API_PREFIX = "/api/v1"
 
+logger = logging.getLogger("uvicorn.error")
+
 settings = get_settings()
 
 app = FastAPI(
@@ -18,6 +25,27 @@ app = FastAPI(
     redoc_url=None,
 )
 
+
+class CatchUnhandledMiddleware(BaseHTTPMiddleware):
+    """Turn unhandled exceptions into JSON 500s before CORS sees them.
+
+    Without this, exceptions escape to ServerErrorMiddleware (outside CORS),
+    so the 500 has no Access-Control-Allow-Origin, the browser rejects the
+    response as a network failure, and the UI shows a misleading
+    "connection failed" message instead of the real server error.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception:
+            logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+
+
+# Registered before CORS so it sits *inside* the CORS layer (Starlette's last
+# add_middleware wins the outermost slot) and CORS headers land on its 500s.
+app.add_middleware(CatchUnhandledMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,

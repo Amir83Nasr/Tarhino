@@ -12,6 +12,7 @@ from app.db.scoped import get_scoped
 from app.db.session import get_session
 from app.models.teaching import (
     Assessment,
+    Attendance,
     ClassSubject,
     Grade,
     LessonPlan,
@@ -22,6 +23,7 @@ from app.models.teaching import (
     TeachingClass,
     WeeklySlot,
 )
+from app.reports.attendance import attendance_sheet_dataset
 from app.reports.excel import (
     excel_response,
     timetable_excel_filename,
@@ -29,6 +31,7 @@ from app.reports.excel import (
 )
 from app.reports.grades import DEFAULT_SCALE, grade_sheet_dataset
 from app.reports.pdf import (
+    attendance_filename,
     grade_sheet_filename,
     pdf_response,
     render_pdf,
@@ -435,4 +438,61 @@ async def timetable_xls(class_id: UUID, user: CurrentUser, session: Session):
     return excel_response(
         timetable_excel_html(dataset),
         timetable_excel_filename(class_name, today),
+    )
+
+
+@router.get("/attendance/{class_id}.pdf")
+async def attendance_pdf(
+    class_id: UUID,
+    user: CurrentUser,
+    session: Session,
+    date: Annotated[dt.date, Query()],
+):
+    """Day attendance sheet: roster with present/absent + absence totals."""
+    teaching_class = await get_scoped(session, TeachingClass, class_id, user.id)
+    if teaching_class is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    students_rows = list(
+        await session.scalars(
+            select(Student)
+            .where(Student.user_id == user.id, Student.class_id == class_id)
+            .order_by(Student.last_name, Student.first_name)
+        )
+    )
+    absent_ids = set(
+        await session.scalars(
+            select(Attendance.student_id).where(
+                Attendance.user_id == user.id,
+                Attendance.class_id == class_id,
+                Attendance.date == date,
+                Attendance.status == "absent",
+            )
+        )
+    )
+    absent_str = {str(sid) for sid in absent_ids}
+    counts: dict[str, int] = {}
+    for sid in await session.scalars(
+        select(Attendance.student_id).where(
+            Attendance.user_id == user.id,
+            Attendance.class_id == class_id,
+            Attendance.status == "absent",
+        )
+    ):
+        key = str(sid)
+        counts[key] = counts.get(key, 0) + 1
+    names = [f"{s.first_name} {s.last_name}" for s in students_rows]
+    id_by_name = {f"{s.first_name} {s.last_name}": str(s.id) for s in students_rows}
+    name_counts = {name: counts.get(sid, 0) for name, sid in id_by_name.items() if sid in counts}
+    absent_names = {name for name, sid in id_by_name.items() if sid in absent_str}
+    dataset = attendance_sheet_dataset(
+        names,
+        absent_names,
+        name_counts,
+        teacher_name=teacher_name(user),
+        class_name=teaching_class.name,
+        day_label=numeric_jalali(date),
+    )
+    return pdf_response(
+        render_pdf("attendance", dataset),
+        attendance_filename(teaching_class.name, date),
     )

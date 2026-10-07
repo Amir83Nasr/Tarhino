@@ -34,6 +34,8 @@ export default function GradesPage() {
   const singleClassId = classes?.[0]?.id ?? ""
 
   const [subjectId, setSubjectId] = useState<string>("")
+  const firstId = (subjects ?? [])[0]?.id ?? ""
+  const activeId = subjectId || firstId
 
   const links = useClassSubjects(singleClassId || null)
   const linkedIds =
@@ -44,17 +46,17 @@ export default function GradesPage() {
   const ready = singleClassId && subjectId
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 md:gap-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div>
         <h1 className="text-lg">کارنامه</h1>
         <p className="text-sm text-muted-foreground">
-          دو قدم: درس انتخاب کن، سطح توصیفی بده.
+          سطح توصیفی هر دانش‌آموز.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>۱. انتخاب درس</CardTitle>
+          <CardTitle>درس</CardTitle>
         </CardHeader>
         <CardContent>
           {subjects === undefined || classes === undefined ? (
@@ -72,9 +74,11 @@ export default function GradesPage() {
                 پایه ساخته شود.
               </span>
             </div>
+          ) : visibleSubjects.length === 1 ? (
+            <p className="text-sm font-medium">{visibleSubjects[0]?.name}</p>
           ) : (
             <SubjectPicker
-              value={subjectId}
+              value={activeId}
               onChange={setSubjectId}
               items={visibleSubjects.map((s) => ({ id: s.id, name: s.name }))}
             />
@@ -84,17 +88,8 @@ export default function GradesPage() {
 
       {ready ? (
         <>
-          <section aria-label="کارنامه درس" className="flex flex-col gap-3">
-            <h2 className="text-sm font-medium">۲. جدول کارنامه</h2>
-            <GradesSection subjectId={subjectId} classId={singleClassId} />
-          </section>
-          <section
-            aria-label="کارنامه دانش‌آموز"
-            className="flex flex-col gap-3"
-          >
-            <h2 className="text-sm font-medium">۳. کارنامه دانش‌آموز</h2>
-            <ReportCardsSection classId={singleClassId} />
-          </section>
+          <GradesSection subjectId={activeId} classId={singleClassId} />
+          <ReportCardsSection classId={singleClassId} />
         </>
       ) : null}
     </div>
